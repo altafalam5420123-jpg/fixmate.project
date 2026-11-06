@@ -1902,5 +1902,140 @@ select {
   margin-top: 10px;
 }
 
+/* ========================================================
+   PHASE 4: ADMIN DASHBOARD & PLATFORM MANAGEMENT
+   ======================================================== */
+
+.adm-hero {
+  background: var(--grad-hero);
+  color: #fff;
+  border-radius: 22px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-teal);
+}
+
+.adm-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.adm-kpi-card {
+  background: var(--card);
+  border: 1.5px solid var(--bd);
+  border-radius: 18px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+.adm-kpi-card.highlight {
+  border-color: var(--teal);
+  background: rgba(0, 106, 96, 0.03);
+}
+
+.adm-kpi-card.orange {
+  border-color: var(--orange);
+  background: rgba(250, 106, 0, 0.03);
+}
+
+.adm-kpi-val {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin-top: 4px;
+}
+
+.adm-kpi-sub {
+  font-size: 11px;
+  color: var(--mut);
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+.adm-table-card {
+  background: var(--card);
+  border: 1.5px solid var(--bd);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.adm-item-card {
+  background: var(--card);
+  border: 1.5px solid var(--bd);
+  border-radius: 18px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.adm-item-card:hover {
+  border-color: var(--teal);
+}
+
+.adm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.adm-badge.open {
+  background: rgba(250, 106, 0, 0.12);
+  color: var(--orange);
+}
+
+.adm-badge.resolved {
+  background: rgba(30, 130, 76, 0.12);
+  color: var(--ok);
+}
+
+.adm-badge.verified {
+  background: rgba(0, 106, 96, 0.12);
+  color: var(--teal);
+}
+
+.adm-badge.unverified {
+  background: rgba(211, 47, 47, 0.12);
+  color: var(--bad);
+}
+
+.adm-svc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--bd);
+}
+
+.adm-svc-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.adm-subnav {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 14px;
+  scrollbar-width: none;
+}
+
+.adm-subnav::-webkit-scrollbar {
+  display: none;
+}
+
 
 

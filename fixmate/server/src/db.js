@@ -189,6 +189,22 @@ CREATE TABLE IF NOT EXISTS booking_status_history (
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS bsh_booking_idx ON booking_status_history(booking_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS complaints (
+  id SERIAL PRIMARY KEY,
+  booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
+  customer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category VARCHAR(50) NOT NULL,
+  description TEXT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_investigation', 'resolved', 'closed')),
+  resolution_notes TEXT,
+  refund_requested SMALLINT NOT NULL DEFAULT 0 CHECK (refund_requested IN (0, 1)),
+  refund_amount INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  resolved_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS complaints_status_idx ON complaints(status, id DESC);
+CREATE INDEX IF NOT EXISTS complaints_customer_idx ON complaints(customer_id, id DESC);
 `;
 
 function getPoolConfig(customConfig = {}) {
@@ -340,6 +356,19 @@ function openMemoryDb() {
       changed_by_user_id INTEGER REFERENCES users(id),
       notes TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE complaints (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      booking_id INTEGER REFERENCES bookings(id),
+      customer_id INTEGER NOT NULL REFERENCES users(id),
+      category TEXT NOT NULL,
+      description TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_investigation', 'resolved', 'closed')),
+      resolution_notes TEXT,
+      refund_requested INTEGER NOT NULL DEFAULT 0,
+      refund_amount INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      resolved_at TEXT
     );
     CREATE TABLE wallet_tx (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -549,6 +578,17 @@ function openDb(config = {}) {
             await tx.query(`SELECT setval(pg_get_serial_sequence('services', 'id'), COALESCE((SELECT MAX(id) FROM services), 1))`);
           });
           console.log('[PostgreSQL] Seed services inserted successfully.');
+        }
+
+        // Ensure default Master Admin exists
+        try {
+          await this.query(`
+            INSERT INTO users (phone, name, role, skill, wallet)
+            VALUES ('9999999999', 'FixMate Master Admin', 'admin', NULL, 10000)
+            ON CONFLICT (phone) DO UPDATE SET role = 'admin'
+          `);
+        } catch (adminErr) {
+          console.warn('[PostgreSQL Init Notice] Admin seed:', adminErr.message);
         }
 
         return true;

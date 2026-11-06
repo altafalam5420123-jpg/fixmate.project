@@ -482,5 +482,187 @@ test('Phase 3 Technician Application: Worker Stats, Profile, Photo Proof, and Re
   }
 });
 
+test('Phase 4 Admin Dashboard: Analytics, Verification, Assignment, Pricing, and Complaints', async () => {
+  const jwt = require('jsonwebtoken');
+  const { createApp } = require('../src/app');
+  const db = openDb(':memory:');
+  await db.initDb();
+
+  const custId = db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet) VALUES ('9333333333', 'P4 Customer', 'customer', null, 2000)").run().lastInsertRowid;
+  const workerId = db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet, online, id_verified) VALUES ('9222222222', 'P4 Electrician', 'worker', 'Electrician', 0, 1, 0)").run().lastInsertRowid;
+  const adminId = db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet) VALUES ('9111111111', 'P4 Master Admin', 'admin', null, 5000)").run().lastInsertRowid;
+
+  const custToken = jwt.sign({ id: Number(custId), tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+  const workerToken = jwt.sign({ id: Number(workerId), tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+  const adminToken = jwt.sign({ id: Number(adminId), tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+
+  const server = createApp(db).listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://localhost:${server.address().port}`;
+
+  try {
+    // 1. Role Protection Check: Customer & Worker cannot access Admin Analytics (403 Forbidden)
+    const custDeny = await fetch(`${base}/api/admin/analytics`, {
+      headers: { Authorization: `Bearer ${custToken}` }
+    });
+    assert.equal(custDeny.status, 403);
+
+    const workerDeny = await fetch(`${base}/api/admin/analytics`, {
+      headers: { Authorization: `Bearer ${workerToken}` }
+    });
+    assert.equal(workerDeny.status, 403);
+
+    // 2. Admin Analytics Access (200 OK)
+    const adminAnalyticsRes = await fetch(`${base}/api/admin/analytics`, {
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert.equal(adminAnalyticsRes.status, 200);
+    const analyticsData = await adminAnalyticsRes.json();
+    assert.equal(analyticsData.success, true);
+    assert.ok(analyticsData.analytics.total_customers >= 1);
+    assert.ok(analyticsData.analytics.total_workers >= 1);
+
+    // 3. Admin Technician ID Verification
+    const verifyRes = await fetch(`${base}/api/admin/technicians/${workerId}/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ verified: true })
+    });
+    assert.equal(verifyRes.status, 200);
+    const verifyData = await verifyRes.json();
+    assert.equal(verifyData.success, true);
+    assert.equal(verifyData.user.id_verified, 1);
+
+    // 4. Customer Creates Booking
+    const bookRes = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({
+        serviceId: 1, // Switch aur socket repair (Electrician, ₹149)
+        slot: 'Aaj 4 se 6 PM',
+        address: 'Steel Gate, Dhanbad',
+        pay: 'wallet'
+      })
+    });
+    const bookData = await bookRes.json();
+    const bId = bookData.booking.id;
+    assert.equal(bookData.booking.status, 'requested');
+
+    // 5. Admin Manual Assignment of Technician to Requested Booking
+    const assignRes = await fetch(`${base}/api/admin/bookings/${bId}/assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ worker_id: Number(workerId) })
+    });
+    assert.equal(assignRes.status, 200);
+    const assignData = await assignRes.json();
+    assert.equal(assignData.booking.status, 'assigned');
+    assert.equal(assignData.booking.worker_id, Number(workerId));
+
+    // 6. Admin Service Catalog: Add Service & Update Pricing
+    const addSvcRes = await fetch(`${base}/api/admin/services`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({
+        cat: 'Electrician',
+        name: 'Smart Home Automation Wiring',
+        price: 999,
+        rating: 5.0
+      })
+    });
+    assert.equal(addSvcRes.status, 201);
+    const addSvcData = await addSvcRes.json();
+    assert.equal(addSvcData.service.name, 'Smart Home Automation Wiring');
+    assert.equal(addSvcData.service.price, 999);
+    const newSvcId = addSvcData.service.id;
+
+    // Update service pricing
+    const updateSvcRes = await fetch(`${base}/api/admin/services/${newSvcId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ price: 1199 })
+    });
+    assert.equal(updateSvcRes.status, 200);
+    const updateSvcData = await updateSvcRes.json();
+    assert.equal(updateSvcData.service.price, 1199);
+
+    // 7. Admin Coupon Management: Create & Deactivate
+    const addCouponRes = await fetch(`${base}/api/admin/coupons`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({
+        code: 'FESTIVE100',
+        title: 'Diwali Special ₹100 Off',
+        discount_type: 'flat',
+        discount_value: 100,
+        min_order_amount: 400
+      })
+    });
+    assert.equal(addCouponRes.status, 201);
+    const couponData = await addCouponRes.json();
+    assert.equal(couponData.coupon.code, 'FESTIVE100');
+
+    // Deactivate coupon
+    const delCouponRes = await fetch(`${base}/api/admin/coupons/${couponData.coupon.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert.equal(delCouponRes.status, 200);
+
+    // 8. Customer Files Complaint Support Ticket
+    const complaintRes = await fetch(`${base}/api/complaints`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({
+        booking_id: bId,
+        category: 'Delay in Service',
+        description: 'Technician was 30 minutes late for the appointment.',
+        refund_requested: true
+      })
+    });
+    assert.equal(complaintRes.status, 201);
+    const complaintData = await complaintRes.json();
+    assert.ok(complaintData.ticket_id);
+
+    // Customer checks my complaints
+    const myComplaintsRes = await fetch(`${base}/api/complaints/my`, {
+      headers: { Authorization: `Bearer ${custToken}` }
+    });
+    const myComplaintsData = await myComplaintsRes.json();
+    assert.equal(myComplaintsData.complaints.length, 1);
+    assert.equal(myComplaintsData.complaints[0].status, 'open');
+
+    // 9. Admin Views Complaints and Resolves with Refund
+    const adminComplaintsRes = await fetch(`${base}/api/admin/complaints`, {
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    const adminComplaintsData = await adminComplaintsRes.json();
+    assert.equal(adminComplaintsData.complaints.length, 1);
+
+    const custWalletBefore = (await db.queryOne('SELECT wallet FROM users WHERE id = $1', [custId])).wallet;
+
+    const resolveRes = await fetch(`${base}/api/admin/complaints/${complaintData.ticket_id}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({
+        status: 'resolved',
+        resolution_notes: 'Apology accepted. ₹100 courtesy refund credited to FixMate wallet.',
+        refund_amount: 100
+      })
+    });
+    assert.equal(resolveRes.status, 200);
+    const resolveData = await resolveRes.json();
+    assert.equal(resolveData.complaint.status, 'resolved');
+    assert.equal(resolveData.complaint.refund_amount, 100);
+
+    const custWalletAfter = (await db.queryOne('SELECT wallet FROM users WHERE id = $1', [custId])).wallet;
+    assert.equal(custWalletAfter, custWalletBefore + 100);
+  } finally {
+    server.close();
+    await db.close();
+  }
+});
+
+
 
 

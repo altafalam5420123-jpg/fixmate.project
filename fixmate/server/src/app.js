@@ -267,7 +267,7 @@ function createApp(db = openDb()) {
     let user = await db.queryOne('SELECT * FROM users WHERE phone = $1', [row.phone]), isNew = false;
     if (!user) {
       // OTP stays valid so the client can resend the same OTP together with the profile.
-      if (String(name || '').trim().length < 2 || !['customer', 'worker'].includes(role))
+      if (String(name || '').trim().length < 2 || !['customer', 'worker', 'admin'].includes(role))
         return res.status(400).json({ success: false, needsProfile: true, message: 'Naam aur role chuno' });
       if (role === 'worker' && !CATEGORIES.includes(skill)) bad(400, 'Worker ke liye sahi kaam chuno');
       const insRes = await db.query(
@@ -863,6 +863,333 @@ function createApp(db = openDb()) {
     await credit(req.user.id, 'Paise jode (demo)', amt);
     const u = await db.queryOne('SELECT wallet FROM users WHERE id = $1', [req.user.id]);
     ok(res, { balance: u.wallet });
+  }));
+
+  // ---------- Complaints & Support (Customer + Admin) ----------
+  app.post('/api/complaints', auth('customer'), h(async (req, res) => {
+    const { booking_id, category, description, refund_requested } = req.body || {};
+    if (!category || !String(category).trim()) bad(400, 'Complaint category chunein');
+    if (!description || String(description).trim().length < 5) bad(400, 'Problem ka vistaar se vivaran dein (kam se kam 5 akshar)');
+
+    let validBookingId = null;
+    if (booking_id) {
+      const b = await load(booking_id);
+      mine(b, req.user);
+      validBookingId = b.id;
+    }
+
+    const ins = await db.query(
+      `INSERT INTO complaints (booking_id, customer_id, category, description, refund_requested, status)
+       VALUES ($1, $2, $3, $4, $5, 'open') RETURNING id`,
+      [
+        validBookingId,
+        req.user.id,
+        String(category).trim().slice(0, 50),
+        String(description).trim().slice(0, 1000),
+        refund_requested ? 1 : 0
+      ]
+    );
+
+    ok(res, { ticket_id: ins.rows[0].id, message: 'Aapki shikayat darj kar li gayi hai. Hamari team jald sampark karegi.' }, 201);
+  }));
+
+  app.get('/api/complaints/my', auth('customer'), h(async (req, res) => {
+    const result = await db.query(
+      `SELECT c.*, s.name AS service_name, b.slot
+       FROM complaints c
+       LEFT JOIN bookings b ON b.id = c.booking_id
+       LEFT JOIN services s ON s.id = b.service_id
+       WHERE c.customer_id = $1
+       ORDER BY c.id DESC`,
+      [req.user.id]
+    );
+    ok(res, { complaints: result.rows });
+  }));
+
+  // ---------- Admin Dashboard & Platform Management (Role: Admin) ----------
+  app.get('/api/admin/analytics', auth('admin'), h(async (req, res) => {
+    const [
+      customersRes,
+      workersRes,
+      verifiedWorkersRes,
+      bookingsCountRes,
+      statusCountsRes,
+      revenueRes,
+      complaintsCountRes,
+      complaintsByStatusRes,
+      topServicesRes
+    ] = await Promise.all([
+      db.queryOne("SELECT COUNT(*) AS c FROM users WHERE role = 'customer'"),
+      db.queryOne("SELECT COUNT(*) AS c FROM users WHERE role = 'worker'"),
+      db.queryOne("SELECT COUNT(*) AS c FROM users WHERE role = 'worker' AND id_verified = 1"),
+      db.queryOne("SELECT COUNT(*) AS c FROM bookings"),
+      db.query("SELECT status, COUNT(*) AS count FROM bookings GROUP BY status"),
+      db.queryOne("SELECT COALESCE(SUM(total), 0) AS rev FROM bookings WHERE paid = 1"),
+      db.queryOne("SELECT COUNT(*) AS c FROM complaints"),
+      db.query("SELECT status, COUNT(*) AS count FROM complaints GROUP BY status"),
+      db.query(
+        `SELECT s.id, s.name, s.cat, COUNT(b.id) AS bookings_count, COALESCE(SUM(b.total), 0) AS total_revenue
+         FROM services s
+         LEFT JOIN bookings b ON b.service_id = s.id
+         GROUP BY s.id, s.name, s.cat
+         ORDER BY bookings_count DESC, total_revenue DESC
+         LIMIT 6`
+      )
+    ]);
+
+    const totalRevenue = Number(revenueRes ? revenueRes.rev : 0);
+    const platformCommission = Math.round(totalRevenue * COMMISSION);
+
+    const bookingStatusMap = {};
+    (statusCountsRes.rows || []).forEach(r => {
+      bookingStatusMap[r.status] = Number(r.count);
+    });
+
+    const complaintStatusMap = {};
+    (complaintsByStatusRes.rows || []).forEach(r => {
+      complaintStatusMap[r.status] = Number(r.count);
+    });
+
+    ok(res, {
+      analytics: {
+        total_customers: Number(customersRes ? customersRes.c : 0),
+        total_workers: Number(workersRes ? workersRes.c : 0),
+        verified_workers: Number(verifiedWorkersRes ? verifiedWorkersRes.c : 0),
+        total_bookings: Number(bookingsCountRes ? bookingsCountRes.c : 0),
+        total_revenue: totalRevenue,
+        platform_commission: platformCommission,
+        worker_payouts: Math.max(0, totalRevenue - platformCommission),
+        bookings_by_status: bookingStatusMap,
+        total_complaints: Number(complaintsCountRes ? complaintsCountRes.c : 0),
+        complaints_by_status: complaintStatusMap,
+        top_services: topServicesRes.rows
+      }
+    });
+  }));
+
+  app.get('/api/admin/users', auth('admin'), h(async (req, res) => {
+    const { role, verified, q } = req.query;
+    const conditions = [];
+    const params = [];
+    let idx = 1;
+
+    if (role && ['customer', 'worker', 'admin'].includes(role)) {
+      conditions.push(`role = $${idx++}`);
+      params.push(role);
+    }
+    if (verified !== undefined && verified !== '') {
+      conditions.push(`id_verified = $${idx++}`);
+      params.push(Number(verified) ? 1 : 0);
+    }
+    if (q && String(q).trim()) {
+      conditions.push(`(name ILIKE $${idx} OR phone LIKE $${idx})`);
+      params.push(`%${String(q).trim()}%`);
+      idx++;
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const result = await db.query(
+      `SELECT id, name, phone, role, skill, wallet, online, id_verified, experience_years, service_areas
+       FROM users
+       ${whereClause}
+       ORDER BY id DESC LIMIT 100`,
+      params
+    );
+    ok(res, { users: result.rows });
+  }));
+
+  app.post('/api/admin/technicians/:id/verify', auth('admin'), h(async (req, res) => {
+    const techId = Number(req.params.id);
+    const verified = req.body.verified !== false ? 1 : 0;
+    const worker = await db.queryOne("SELECT * FROM users WHERE id = $1 AND role = 'worker'", [techId]);
+    if (!worker) bad(404, 'Technician nahi mila');
+
+    await db.query('UPDATE users SET id_verified = $1 WHERE id = $2', [verified, techId]);
+    const updated = await db.queryOne('SELECT * FROM users WHERE id = $1', [techId]);
+    ok(res, {
+      user: pub(updated),
+      message: verified ? 'Technician ID verify kar di gayi (Badge active)' : 'Technician verification status hata diya gaya'
+    });
+  }));
+
+  app.get('/api/admin/bookings', auth('admin'), h(async (req, res) => {
+    const { status, limit } = req.query;
+    const maxLimit = Math.min(Number(limit) || 100, 200);
+    const querySql = `
+      SELECT b.*, s.name AS service_name, s.cat, s.price AS base_price,
+             c.name AS customer_name, c.phone AS customer_phone,
+             w.name AS worker_name, w.phone AS worker_phone
+      FROM bookings b
+      JOIN services s ON s.id = b.service_id
+      JOIN users c ON c.id = b.customer_id
+      LEFT JOIN users w ON w.id = b.worker_id
+      WHERE ($1::text IS NULL OR b.status = $1)
+      ORDER BY b.id DESC
+      LIMIT $2
+    `;
+    const result = await db.query(querySql, [status || null, maxLimit]);
+    ok(res, { bookings: result.rows });
+  }));
+
+  app.post('/api/admin/bookings/:id/assign', auth('admin'), h(async (req, res) => {
+    const bId = Number(req.params.id);
+    const workerId = Number(req.body.worker_id);
+    if (!workerId) bad(400, 'Technician select karein');
+
+    const b = await db.queryOne('SELECT * FROM bookings WHERE id = $1', [bId]);
+    if (!b) bad(404, 'Booking nahi mili');
+
+    const worker = await db.queryOne("SELECT * FROM users WHERE id = $1 AND role = 'worker'", [workerId]);
+    if (!worker) bad(404, 'Technician nahi mila');
+
+    const newStatus = b.status === 'requested' ? 'assigned' : b.status;
+    await db.transaction(async (tx) => {
+      await tx.query('UPDATE bookings SET worker_id = $1, status = $2 WHERE id = $3', [workerId, newStatus, b.id]);
+      await tx.query(
+        'INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by_user_id, notes) VALUES ($1, $2, $3, $4, $5)',
+        [b.id, b.status, newStatus, req.user.id, `Admin manual assignment: Technician ${worker.name} (ID: ${worker.id})`]
+      );
+    });
+
+    const updated = await load(b.id);
+    ok(res, { booking: view(updated, req.user), message: `Technician ${worker.name} assign ho gaya` });
+  }));
+
+  app.post('/api/admin/services', auth('admin'), h(async (req, res) => {
+    const { cat, name, price, rating } = req.body || {};
+    if (!cat || !CATEGORIES.includes(cat)) bad(400, 'Valid category chunein');
+    if (!name || String(name).trim().length < 2) bad(400, 'Service ka naam likhein');
+    const p = Number(price);
+    if (!Number.isInteger(p) || p < 1 || p > 100000) bad(400, 'Valid service price likhein (₹1 se ₹100,000)');
+    const r = rating != null ? Math.min(5, Math.max(1, Number(rating))) : 4.8;
+
+    const ins = await db.query(
+      `INSERT INTO services (cat, name, price, rating)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [cat, String(name).trim(), p, r]
+    );
+    const service = await db.queryOne('SELECT * FROM services WHERE id = $1', [ins.rows[0].id]);
+    ok(res, { service, message: 'Nayi service catalog mein add ho gayi' }, 201);
+  }));
+
+  app.put('/api/admin/services/:id', auth('admin'), h(async (req, res) => {
+    const sId = Number(req.params.id);
+    const existing = await db.queryOne('SELECT * FROM services WHERE id = $1', [sId]);
+    if (!existing) bad(404, 'Service nahi mili');
+
+    const { cat, name, price, rating } = req.body || {};
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (cat && CATEGORIES.includes(cat)) {
+      updates.push(`cat = $${idx++}`);
+      values.push(cat);
+    }
+    if (name && String(name).trim()) {
+      updates.push(`name = $${idx++}`);
+      values.push(String(name).trim());
+    }
+    if (price !== undefined) {
+      const p = Number(price);
+      if (!Number.isInteger(p) || p < 1 || p > 100000) bad(400, 'Price ₹1 se ₹100,000 ke beech ho');
+      updates.push(`price = $${idx++}`);
+      values.push(p);
+    }
+    if (rating !== undefined) {
+      const r = Number(rating);
+      if (Number.isFinite(r) && r >= 1 && r <= 5) {
+        updates.push(`rating = $${idx++}`);
+        values.push(r);
+      }
+    }
+
+    if (updates.length > 0) {
+      values.push(sId);
+      await db.query(`UPDATE services SET ${updates.join(', ')} WHERE id = $${idx}`, values);
+    }
+
+    const updated = await db.queryOne('SELECT * FROM services WHERE id = $1', [sId]);
+    ok(res, { service: updated, message: 'Service update ho gayi' });
+  }));
+
+  app.post('/api/admin/coupons', auth('admin'), h(async (req, res) => {
+    const { code, title, discount_type, discount_value, min_order_amount, max_discount, usage_limit } = req.body || {};
+    if (!code || String(code).trim().length < 3) bad(400, 'Coupon code kam se kam 3 akshar ka ho');
+    if (!title || String(title).trim().length < 2) bad(400, 'Coupon title likhein');
+    if (!['percentage', 'flat'].includes(discount_type)) bad(400, 'Discount type percentage ya flat ho');
+    const val = Number(discount_value);
+    if (!Number.isInteger(val) || val <= 0) bad(400, 'Discount value positive number ho');
+    if (discount_type === 'percentage' && val > 90) bad(400, 'Percentage discount 90% se zyada nahi ho sakta');
+
+    const cleanCode = String(code).trim().toUpperCase();
+    const minAmt = Number(min_order_amount) || 0;
+    const maxDisc = max_discount ? Number(max_discount) : null;
+    const limit = Number(usage_limit) || 100;
+
+    const ins = await db.query(
+      `INSERT INTO coupons (code, title, discount_type, discount_value, min_order_amount, max_discount, usage_limit, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 1) RETURNING id`,
+      [cleanCode, String(title).trim(), discount_type, val, minAmt, maxDisc, limit]
+    );
+    const coupon = await db.queryOne('SELECT * FROM coupons WHERE id = $1', [ins.rows[0].id]);
+    ok(res, { coupon, message: 'Coupon offer create ho gaya' }, 201);
+  }));
+
+  app.delete('/api/admin/coupons/:id', auth('admin'), h(async (req, res) => {
+    const id = Number(req.params.id);
+    const r = await db.query('UPDATE coupons SET is_active = 0 WHERE id = $1', [id]);
+    if (r.rowCount === 0) bad(404, 'Coupon nahi mila');
+    ok(res, { message: 'Coupon deactivate kar diya gaya' });
+  }));
+
+  app.get('/api/admin/complaints', auth('admin'), h(async (req, res) => {
+    const { status } = req.query;
+    const result = await db.query(
+      `SELECT c.*, u.name AS customer_name, u.phone AS customer_phone,
+              s.name AS service_name, b.total AS booking_total, b.paid AS booking_paid
+       FROM complaints c
+       JOIN users u ON u.id = c.customer_id
+       LEFT JOIN bookings b ON b.id = c.booking_id
+       LEFT JOIN services s ON s.id = b.service_id
+       WHERE ($1::text IS NULL OR c.status = $1)
+       ORDER BY c.id DESC`,
+      [status || null]
+    );
+    ok(res, { complaints: result.rows });
+  }));
+
+  app.post('/api/admin/complaints/:id/resolve', auth('admin'), h(async (req, res) => {
+    const cId = Number(req.params.id);
+    const { status, resolution_notes, refund_amount } = req.body || {};
+    const complaint = await db.queryOne('SELECT * FROM complaints WHERE id = $1', [cId]);
+    if (!complaint) bad(404, 'Complaint ticket nahi mili');
+
+    const nextStatus = status && ['in_investigation', 'resolved', 'closed'].includes(status) ? status : 'resolved';
+    const notes = resolution_notes ? String(resolution_notes).trim().slice(0, 1000) : 'Resolved by FixMate Admin Support';
+    const refund = Number(refund_amount) || 0;
+
+    await db.transaction(async (tx) => {
+      await tx.query(
+        `UPDATE complaints
+         SET status = $1, resolution_notes = $2, refund_amount = $3, resolved_at = CURRENT_TIMESTAMP
+         WHERE id = $4`,
+        [nextStatus, notes, refund, cId]
+      );
+
+      if (refund > 0) {
+        await credit(complaint.customer_id, `FixMate Refund (Ticket #${cId}): ${notes.slice(0, 40)}`, refund, tx);
+      }
+    });
+
+    const updated = await db.queryOne('SELECT * FROM complaints WHERE id = $1', [cId]);
+    ok(res, {
+      complaint: updated,
+      message: refund > 0
+        ? `Complaint resolve ho gayi aur customer ke wallet mein ₹${refund} refund credit ho gaya`
+        : `Complaint status update ho gaya: ${nextStatus}`
+    });
   }));
 
   // ---------- AI Assistant (Voice + Chat) ----------

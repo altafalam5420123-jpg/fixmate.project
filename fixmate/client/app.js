@@ -379,7 +379,7 @@ async function signedIn(d) {
   S.token = d.token;
   S.user = d.user;
   try { localStorage.setItem('fm_auth', JSON.stringify({ t: d.token, u: d.user })); } catch (e) {}
-  S.scr = d.user.role === 'worker' ? 'wk' : 'home';
+  S.scr = d.user.role === 'worker' ? 'wk' : (d.user.role === 'admin' ? 'adm' : 'home');
   await refresh();
   render();
   scrollTo(0, 0);
@@ -858,6 +858,25 @@ function bkc(b) {
         </div>
       </div>
     ` : ''}
+
+    <!-- Customer Complaint / Issue Support -->
+    ${!isCan ? `
+      <button class="btn sm ghost" style="margin-top:8px;width:100%;font-size:12px;color:var(--mut)" onclick="openComplaintModal(${b.id})">
+        ${ic('alert', 14)} Shikayat ya Problem Darj Karein
+      </button>
+    ` : ''}
+
+    ${(S.myComplaints || []).filter((c) => c.booking_id === b.id).map((c) => `
+      <div class="card" style="background:rgba(250,106,0,0.06);border-color:var(--orange);margin-top:8px;padding:8px 12px">
+        <div class="row">
+          <b style="font-size:12px">Ticket #${c.id}: ${esc(c.category)}</b>
+          <span class="adm-badge ${c.status}">${c.status}</span>
+        </div>
+        <div class="mut" style="font-size:11.5px;margin-top:3px">${esc(c.description)}</div>
+        ${c.resolution_notes ? `<div style="font-size:11.5px;color:var(--teal);margin-top:4px"><b>FixMate Resolution:</b> ${esc(c.resolution_notes)}</div>` : ''}
+        ${c.refund_amount ? `<div style="font-size:11.5px;color:var(--ok);font-weight:700">₹${c.refund_amount} refund aapke wallet mein jud gaya</div>` : ''}
+      </div>
+    `).join('')}
   </div>`;
 }
 
@@ -1553,7 +1572,637 @@ function renderModal() {
     </div>`;
   }
 
+  if (S.modal === 'complaint') {
+    return `<div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-sheet" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h3>⚠️ Shikayat / Report Issue</h3>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <label style="font-size:13px;font-weight:700">Issue Category</label>
+        <select id="comp-cat" style="margin:6px 0 12px;padding:12px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
+          <option value="Quality of Work">Quality of Work (Kaam sahi se nahi hua)</option>
+          <option value="Delay in Service">Delay in Service (Worker late aaya)</option>
+          <option value="Technician Behavior">Technician Behavior (Vyavhaar sahi nahi tha)</option>
+          <option value="Pricing Dispute">Pricing Dispute (Quote ya charges galat hain)</option>
+          <option value="Parts Issue">Parts Issue (Duplicate ya kharab spare parts)</option>
+          <option value="Other">Other / Any other issue</option>
+        </select>
+        <label style="font-size:13px;font-weight:700">Dikkat ka vistaar se vivaran (Description)</label>
+        <textarea id="comp-desc" placeholder="Apni dikkat vistaar se batayein taaki admin team iska jaldi samadhan kar sake..." rows="4" style="width:100%;padding:12px;border-radius:14px;border:1.5px solid var(--bd);background:var(--card);color:var(--ink);font:inherit;margin:6px 0 12px"></textarea>
+        <label class="row" style="justify-content:flex-start;gap:8px;margin-bottom:16px;cursor:pointer">
+          <input type="checkbox" id="comp-refund" checked style="width:auto;margin:0">
+          <span style="font-size:13px">Mujhe is booking ka refund chahiye</span>
+        </label>
+        <button class="btn acc" onclick="submitComplaint()">Ticket Darj Karein</button>
+      </div>
+    </div>`;
+  }
+
+  if (S.modal === 'adminAssign') {
+    const b = (S.admBookings || []).find((x) => x.id === S.assignBookingId);
+    const techList = S.admWorkers || [];
+    return `<div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-sheet" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h3>Manual Technician Assignment</h3>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <div class="mut" style="font-size:13px;margin-bottom:10px">Booking #${b?.id || ''}: <b>${esc(b?.service_name || '')}</b> (${esc(b?.customer_name || '')})</div>
+        <label style="font-size:13px;font-weight:700">Available Technician Chunein:</label>
+        <select id="adm-assign-worker" style="margin:6px 0 16px;padding:12px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
+          ${techList.map((w) => `<option value="${w.id}">${esc(w.name)} (${esc(w.skill || 'General')}) - ${w.online ? '🟢 Online' : '⚪ Offline'} ${w.id_verified ? '⭐ Verified' : ''}</option>`).join('')}
+        </select>
+        <button class="btn acc" onclick="submitAdminAssign()">Technician Assign Karein</button>
+      </div>
+    </div>`;
+  }
+
+  if (S.modal === 'adminResolve') {
+    const c = (S.admComplaints || []).find((x) => x.id === S.resolveComplaintId);
+    return `<div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-sheet" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h3>Resolve Ticket #${c?.id || ''}</h3>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <div class="card" style="background:var(--soft);border:none;margin-bottom:12px;font-size:12px">
+          <b>Customer:</b> ${esc(c?.customer_name || '')} (${esc(c?.customer_phone || '')})<br>
+          <b>Category:</b> ${esc(c?.category || '')}<br>
+          <b>Issue:</b> "${esc(c?.description || '')}"
+        </div>
+        <label style="font-size:13px;font-weight:700">Status</label>
+        <select id="adm-res-status" style="margin:6px 0 12px;padding:12px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
+          <option value="resolved">Resolved (Samasya hal ho gayi)</option>
+          <option value="in_investigation">In Investigation (Jaanch chal rahi hai)</option>
+          <option value="closed">Closed (Ticket band)</option>
+        </select>
+        <label style="font-size:13px;font-weight:700">Resolution Notes (Customer ke liye sandesh)</label>
+        <textarea id="adm-res-notes" rows="3" style="width:100%;padding:12px;border-radius:14px;border:1.5px solid var(--bd);background:var(--card);color:var(--ink);font:inherit;margin:6px 0 12px" placeholder="e.g. Apology accepted and refund credited to wallet."></textarea>
+        <label style="font-size:13px;font-weight:700">Wallet Refund Amount (₹)</label>
+        <input id="adm-res-refund" type="number" min="0" max="5000" placeholder="0 agar refund nahi dena" style="margin:6px 0 16px">
+        <button class="btn acc" onclick="submitAdminResolve()">Submit Resolution & Refund</button>
+      </div>
+    </div>`;
+  }
+
+  if (S.modal === 'adminAddService') {
+    return `<div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-sheet" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h3>Nayi Service Catalog Mein Jodein</h3>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <label style="font-size:13px;font-weight:700">Category</label>
+        <select id="new-svc-cat" style="margin:6px 0 12px;padding:12px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
+          ${CATS.map((c) => `<option value="${c}">${c}</option>`).join('')}
+        </select>
+        <label style="font-size:13px;font-weight:700">Service ka Naam</label>
+        <input id="new-svc-name" placeholder="e.g. Inverter battery acid top-up" style="margin:6px 0 12px">
+        <label style="font-size:13px;font-weight:700">Base Price (₹)</label>
+        <input id="new-svc-price" type="number" min="1" max="100000" placeholder="e.g. 299" style="margin:6px 0 16px">
+        <button class="btn acc" onclick="submitAdminAddService()">Service Add Karein</button>
+      </div>
+    </div>`;
+  }
+
+  if (S.modal === 'adminEditPrice') {
+    const svc = S.editSvc;
+    return `<div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-sheet" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h3>Service Price Update</h3>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <div class="mut" style="font-size:13px;margin-bottom:12px"><b>${esc(svc?.name || '')}</b> (${esc(svc?.cat || '')})</div>
+        <label style="font-size:13px;font-weight:700">Naya Price (₹)</label>
+        <input id="edit-svc-price" type="number" min="1" max="100000" value="${svc?.price || ''}" style="margin:6px 0 16px">
+        <button class="btn acc" onclick="submitAdminEditPrice()">Price Save Karein</button>
+      </div>
+    </div>`;
+  }
+
+  if (S.modal === 'adminAddCoupon') {
+    return `<div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-sheet" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h3>Naya Promo Coupon Create Karein</h3>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <label style="font-size:13px;font-weight:700">Coupon Code</label>
+        <input id="new-cpn-code" placeholder="e.g. FESTIVE100" style="margin:6px 0 12px;text-transform:uppercase">
+        <label style="font-size:13px;font-weight:700">Title / Display Tag</label>
+        <input id="new-cpn-title" placeholder="e.g. Festival Special Flat ₹100 Off" style="margin:6px 0 12px">
+        <div class="row">
+          <div style="flex:1">
+            <label style="font-size:13px;font-weight:700">Discount Type</label>
+            <select id="new-cpn-type" style="margin:6px 0 12px;padding:12px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
+              <option value="flat">Flat (₹)</option>
+              <option value="percentage">Percentage (%)</option>
+            </select>
+          </div>
+          <div style="flex:1">
+            <label style="font-size:13px;font-weight:700">Discount Value</label>
+            <input id="new-cpn-val" type="number" placeholder="100" style="margin:6px 0 12px">
+          </div>
+        </div>
+        <label style="font-size:13px;font-weight:700">Minimum Order Amount (₹)</label>
+        <input id="new-cpn-min" type="number" placeholder="400" style="margin:6px 0 16px">
+        <button class="btn acc" onclick="submitAdminAddCoupon()">Coupon Create Karein</button>
+      </div>
+    </div>`;
+  }
+
   return '';
+}
+
+/* ========================================================
+   PHASE 4: ADMIN DASHBOARD & COMPLAINTS ACTIONS
+   ======================================================== */
+function openComplaintModal(bookingId) {
+  S.complaintBookingId = bookingId;
+  S.modal = 'complaint';
+  render();
+}
+
+function submitComplaint() {
+  const cat = $('comp-cat')?.value || 'Quality of Work';
+  const desc = ($('comp-desc')?.value || '').trim();
+  const ref = $('comp-refund')?.checked;
+
+  if (desc.length < 5) {
+    toast('Problem ka vistaar se vivaran likhein (kam se kam 5 akshar)');
+    return;
+  }
+
+  act(async () => {
+    const res = await api('POST', '/complaints', {
+      booking_id: S.complaintBookingId,
+      category: cat,
+      description: desc,
+      refund_requested: ref
+    });
+    await refresh();
+    closeModal();
+    toast('Ticket #' + res.ticket_id + ' darj ho gayi! Hamari team jald call karegi.');
+  });
+}
+
+function setAdmTab(tab) {
+  S.admTab = tab;
+  render();
+}
+
+function openAdminAssignModal(bookingId) {
+  S.assignBookingId = bookingId;
+  S.modal = 'adminAssign';
+  render();
+}
+
+function submitAdminAssign() {
+  const workerId = +$('adm-assign-worker')?.value;
+  if (!workerId) {
+    toast('Technician select karein');
+    return;
+  }
+  act(async () => {
+    const res = await api('POST', `/admin/bookings/${S.assignBookingId}/assign`, { worker_id: workerId });
+    await refresh();
+    closeModal();
+    toast(res.message);
+  });
+}
+
+function toggleTechVerification(techId, newStatus) {
+  act(async () => {
+    const res = await api('POST', `/admin/technicians/${techId}/verify`, { verified: Boolean(newStatus) });
+    await refresh();
+    render();
+    toast(res.message);
+  });
+}
+
+function openAdminAddServiceModal() {
+  S.modal = 'adminAddService';
+  render();
+}
+
+function submitAdminAddService() {
+  const cat = $('new-svc-cat')?.value;
+  const name = ($('new-svc-name')?.value || '').trim();
+  const price = +$('new-svc-price')?.value;
+
+  if (!name || name.length < 2) {
+    toast('Service ka naam likhein');
+    return;
+  }
+  if (!price || price < 1) {
+    toast('Valid price likhein');
+    return;
+  }
+
+  act(async () => {
+    const res = await api('POST', '/admin/services', { cat, name, price });
+    SV.push({
+      id: res.service.id,
+      c: res.service.cat,
+      n: res.service.name,
+      p: res.service.price,
+      r: res.service.rating || 4.8,
+      k: 'New',
+      e: getCatIcon(res.service.cat)
+    });
+    await refresh();
+    closeModal();
+    toast('Nayi service catalog mein live ho gayi!');
+  });
+}
+
+function openAdminEditPriceModal(svc) {
+  S.editSvc = svc;
+  S.modal = 'adminEditPrice';
+  render();
+}
+
+function submitAdminEditPrice() {
+  const p = +$('edit-svc-price')?.value;
+  if (!p || p < 1) {
+    toast('Valid price likhein');
+    return;
+  }
+  const sId = S.editSvc.id;
+  act(async () => {
+    await api('PUT', `/admin/services/${sId}`, { price: p });
+    const local = SV.find((x) => x.id === sId);
+    if (local) local.p = p;
+    await refresh();
+    closeModal();
+    toast('Service price update ho gaya!');
+  });
+}
+
+function openAdminAddCouponModal() {
+  S.modal = 'adminAddCoupon';
+  render();
+}
+
+function submitAdminAddCoupon() {
+  const code = ($('new-cpn-code')?.value || '').trim().toUpperCase();
+  const title = ($('new-cpn-title')?.value || '').trim();
+  const discount_type = $('new-cpn-type')?.value;
+  const discount_value = +$('new-cpn-val')?.value;
+  const min_order_amount = +$('new-cpn-min')?.value || 0;
+
+  if (!code || code.length < 3) {
+    toast('Code kam se kam 3 akshar ka ho');
+    return;
+  }
+  if (!title) {
+    toast('Coupon title likhein');
+    return;
+  }
+  if (!discount_value || discount_value <= 0) {
+    toast('Valid discount value likhein');
+    return;
+  }
+
+  act(async () => {
+    await api('POST', '/admin/coupons', {
+      code,
+      title,
+      discount_type,
+      discount_value,
+      min_order_amount
+    });
+    await refresh();
+    closeModal();
+    toast(`Coupon ${code} create ho gaya!`);
+  });
+}
+
+function deactivateCoupon(id) {
+  if (!confirm('Kya aap is coupon ko deactivate karna chahte hain?')) return;
+  act(async () => {
+    await api('DELETE', `/admin/coupons/${id}`);
+    await refresh();
+    render();
+    toast('Coupon deactivate ho gaya');
+  });
+}
+
+function openAdminResolveModal(complaintId) {
+  S.resolveComplaintId = complaintId;
+  S.modal = 'adminResolve';
+  render();
+}
+
+function submitAdminResolve() {
+  const st = $('adm-res-status')?.value || 'resolved';
+  const notes = ($('adm-res-notes')?.value || '').trim();
+  const ref = +$('adm-res-refund')?.value || 0;
+
+  act(async () => {
+    const res = await api('POST', `/admin/complaints/${S.resolveComplaintId}/resolve`, {
+      status: st,
+      resolution_notes: notes,
+      refund_amount: ref
+    });
+    await refresh();
+    closeModal();
+    toast(res.message);
+  });
+}
+
+/* ========================================================
+   ADMIN DASHBOARD VIEWS
+   ======================================================== */
+function adm() {
+  const cur = S.admTab || 'overview';
+  const u = S.user || { name: 'Master Admin', phone: '9999999999' };
+
+  return `
+    <div class="adm-hero">
+      <div class="row">
+        <div>
+          <span class="adm-badge verified" style="background:rgba(255,255,255,0.2);color:#fff">Master Admin</span>
+          <h2 style="font-size:22px;margin:6px 0 2px">FixMate Control Center</h2>
+          <div style="font-size:12px;opacity:0.9">Admin: ${esc(u.name)} (${esc(u.phone)})</div>
+        </div>
+        <button class="btn sm ghost" style="color:#fff;border-color:rgba(255,255,255,0.4)" onclick="out()">
+          Logout
+        </button>
+      </div>
+    </div>
+
+    <div class="adm-subnav">
+      <button class="chip ${cur === 'overview' ? 'on' : ''}" onclick="setAdmTab('overview')">📊 Overview</button>
+      <button class="chip ${cur === 'bookings' ? 'on' : ''}" onclick="setAdmTab('bookings')">📋 Bookings</button>
+      <button class="chip ${cur === 'techs' ? 'on' : ''}" onclick="setAdmTab('techs')">🛠️ Technicians</button>
+      <button class="chip ${cur === 'catalog' ? 'on' : ''}" onclick="setAdmTab('catalog')">🏷️ Catalog & Pricing</button>
+      <button class="chip ${cur === 'complaints' ? 'on' : ''}" onclick="setAdmTab('complaints')">🎫 Support Tickets</button>
+    </div>
+
+    ${cur === 'overview' ? admOverview() : ''}
+    ${cur === 'bookings' ? admBookings() : ''}
+    ${cur === 'techs' ? admTechs() : ''}
+    ${cur === 'catalog' ? admCatalog() : ''}
+    ${cur === 'complaints' ? admComplaints() : ''}
+  `;
+}
+
+function admOverview() {
+  const an = S.admAnalytics || {
+    total_revenue: 0,
+    platform_commission: 0,
+    worker_payouts: 0,
+    total_bookings: 0,
+    total_customers: 0,
+    total_workers: 0,
+    verified_workers: 0,
+    total_complaints: 0,
+    bookings_by_status: {},
+    top_services: []
+  };
+
+  const bMap = an.bookings_by_status || {};
+
+  return `
+    <div class="adm-kpi-grid">
+      <div class="adm-kpi-card highlight">
+        <span class="mut" style="font-size:11px;font-weight:700">PLATFORM REVENUE</span>
+        <div class="adm-kpi-val" style="color:var(--teal)">${inr(an.total_revenue || 0)}</div>
+        <div class="adm-kpi-sub">FixMate 15% cut: <b>${inr(an.platform_commission || 0)}</b></div>
+      </div>
+      <div class="adm-kpi-card orange">
+        <span class="mut" style="font-size:11px;font-weight:700">TOTAL BOOKINGS</span>
+        <div class="adm-kpi-val" style="color:var(--orange)">${an.total_bookings || 0}</div>
+        <div class="adm-kpi-sub">${bMap.completed || 0} completed · ${bMap.requested || 0} pending</div>
+      </div>
+      <div class="adm-kpi-card">
+        <span class="mut" style="font-size:11px;font-weight:700">CUSTOMERS & TECHS</span>
+        <div class="adm-kpi-val">${an.total_customers || 0} / ${an.total_workers || 0}</div>
+        <div class="adm-kpi-sub">${an.verified_workers || 0} ID Verified Technicians</div>
+      </div>
+      <div class="adm-kpi-card">
+        <span class="mut" style="font-size:11px;font-weight:700">SUPPORT TICKETS</span>
+        <div class="adm-kpi-val">${an.total_complaints || 0}</div>
+        <div class="adm-kpi-sub">${(an.complaints_by_status?.open || 0)} open tickets</div>
+      </div>
+    </div>
+
+    <div class="adm-table-card">
+      <div class="row" style="margin-bottom:12px">
+        <b style="font-size:15px">Top Performing Services</b>
+        <button class="btn sm ghost" style="width:auto;padding:4px 10px;font-size:11px" onclick="setAdmTab('catalog')">Manage Catalog</button>
+      </div>
+      ${(an.top_services && an.top_services.length) ? an.top_services.map((s) => `
+        <div class="adm-svc-row">
+          <div>
+            <b>${esc(s.name)}</b>
+            <div class="mut" style="font-size:11px">${esc(s.cat)}</div>
+          </div>
+          <div style="text-align:right">
+            <b>${s.bookings_count} bookings</b>
+            <div class="mut" style="font-size:11px">${inr(s.total_revenue)} rev</div>
+          </div>
+        </div>
+      `).join('') : '<div class="mut">No service data yet.</div>'}
+    </div>
+
+    <div class="row" style="margin-top:14px">
+      <button class="btn acc" onclick="setAdmTab('bookings')">📋 Review All Bookings</button>
+      <button class="btn ghost" onclick="setAdmTab('complaints')">🎫 Handle Tickets</button>
+    </div>
+  `;
+}
+
+function admBookings() {
+  const list = S.admBookings || [];
+  const filter = S.admBookingFilter || 'all';
+  const filtered = filter === 'all' ? list : list.filter((b) => b.status === filter);
+
+  return `
+    <div class="chips" style="margin-bottom:12px">
+      <button class="chip ${filter === 'all' ? 'on' : ''}" onclick="S.admBookingFilter='all';render()">All (${list.length})</button>
+      <button class="chip ${filter === 'requested' ? 'on' : ''}" onclick="S.admBookingFilter='requested';render()">Requested (${list.filter((b) => b.status === 'requested').length})</button>
+      <button class="chip ${filter === 'in_progress' ? 'on' : ''}" onclick="S.admBookingFilter='in_progress';render()">In Progress</button>
+      <button class="chip ${filter === 'completed' ? 'on' : ''}" onclick="S.admBookingFilter='completed';render()">Completed</button>
+      <button class="chip ${filter === 'cancelled' ? 'on' : ''}" onclick="S.admBookingFilter='cancelled';render()">Cancelled</button>
+    </div>
+
+    ${filtered.length ? filtered.map((b) => `
+      <div class="adm-item-card">
+        <div class="row">
+          <b>#${b.id} ${esc(b.service_name || 'Service')}</b>
+          <span class="adm-badge ${b.status}">${b.status.replace(/_/g, ' ')}</span>
+        </div>
+        <div class="mut" style="font-size:12px;margin:4px 0">
+          Customer: <b>${esc(b.customer_name || 'Customer')}</b> (${esc(b.customer_phone || '')})<br>
+          Slot: <b>${esc(b.slot)}</b> · Address: ${esc(b.address || 'Dhanbad')}
+        </div>
+        <div class="row" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--bd)">
+          <div>
+            ${b.worker_name ? `
+              <span style="font-size:12px">Tech: <b>${esc(b.worker_name)}</b> (${esc(b.worker_phone || '')})</span>
+            ` : `
+              <span class="adm-badge open">⚠️ No Technician Assigned</span>
+            `}
+          </div>
+          <b>${inr(b.total || b.base_price || 0)} ${b.paid ? '✅ Paid' : '⏳ Unpaid'}</b>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn sm ghost" onclick="openAdminAssignModal(${b.id})">
+            ${b.worker_name ? 'Reassign Tech' : '👉 Assign Technician'}
+          </button>
+        </div>
+      </div>
+    `).join('') : '<div class="card mut" style="text-align:center;padding:24px">No bookings found in this view.</div>'}
+  `;
+}
+
+function admTechs() {
+  const list = S.admWorkers || [];
+  const filter = S.admTechFilter || 'all';
+  const filtered = filter === 'all'
+    ? list
+    : (filter === 'verified' ? list.filter((w) => w.id_verified) : list.filter((w) => !w.id_verified));
+
+  return `
+    <div class="chips" style="margin-bottom:12px">
+      <button class="chip ${filter === 'all' ? 'on' : ''}" onclick="S.admTechFilter='all';render()">All Techs (${list.length})</button>
+      <button class="chip ${filter === 'pending' ? 'on' : ''}" onclick="S.admTechFilter='pending';render()">Pending ID (${list.filter((w) => !w.id_verified).length})</button>
+      <button class="chip ${filter === 'verified' ? 'on' : ''}" onclick="S.admTechFilter='verified';render()">Verified (${list.filter((w) => w.id_verified).length})</button>
+    </div>
+
+    ${filtered.length ? filtered.map((w) => `
+      <div class="adm-item-card">
+        <div class="row">
+          <div class="row" style="justify-content:flex-start;gap:10px">
+            <span class="av" style="background:var(--soft);color:var(--teal);border-radius:12px">${ic('tool', 20)}</span>
+            <div>
+              <b>${esc(w.name)}</b>
+              <div class="mut" style="font-size:12px">${esc(w.skill || 'Technician')} · ${w.experience_years != null ? w.experience_years + ' yrs exp' : 'Experienced'}</div>
+            </div>
+          </div>
+          <span class="adm-badge ${w.id_verified ? 'verified' : 'unverified'}">
+            ${w.id_verified ? '✅ Verified' : '⚠️ Pending ID'}
+          </span>
+        </div>
+        <div class="mut" style="font-size:12px;margin:8px 0">
+          Phone: <b>${esc(w.phone)}</b> · Areas: ${esc(w.service_areas || 'All Dhanbad')}<br>
+          Status: ${w.online ? '🟢 Online (Ready for jobs)' : '⚪ Offline'} · Wallet: <b>${inr(w.wallet || 0)}</b>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn sm ${w.id_verified ? 'ghost' : 'acc'}" onclick="toggleTechVerification(${w.id}, ${w.id_verified ? 0 : 1})">
+            ${w.id_verified ? 'Revoke Verification' : '✅ Approve & Issue Verified Badge'}
+          </button>
+          <a href="tel:${esc(w.phone)}" class="btn sm ghost" style="text-decoration:none;width:auto;padding:8px 12px">
+            ${ic('phone', 14)} Call
+          </a>
+        </div>
+      </div>
+    `).join('') : '<div class="card mut" style="text-align:center;padding:24px">No technicians found in this view.</div>'}
+  `;
+}
+
+function admCatalog() {
+  const svcs = SV || [];
+  const cpns = S.coupons || [];
+
+  return `
+    <div class="row" style="margin-bottom:12px">
+      <h3 style="font-size:17px;margin:0">Service Catalog (${svcs.length})</h3>
+      <button class="btn sm acc" style="width:auto;padding:8px 14px" onclick="openAdminAddServiceModal()">
+        + Add Service
+      </button>
+    </div>
+
+    <div class="adm-table-card">
+      ${svcs.map((s) => `
+        <div class="adm-svc-row">
+          <div>
+            <b>${esc(s.n)}</b>
+            <div class="mut" style="font-size:11px">${esc(s.c)} · ⭐ ${s.r || 4.8}</div>
+          </div>
+          <div class="row" style="justify-content:flex-end;gap:8px">
+            <b style="font-size:15px;color:var(--teal)">${inr(s.p)}</b>
+            <button class="btn sm ghost" style="width:auto;padding:4px 10px;font-size:11px" onclick="openAdminEditPriceModal({ id: ${s.id}, name: '${esc(s.n).replace(/'/g, "\\'")}', cat: '${esc(s.c)}', price: ${s.p} })">
+              Edit Price
+            </button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="row" style="margin:20px 0 12px">
+      <h3 style="font-size:17px;margin:0">Coupons & Promo Offers (${cpns.length})</h3>
+      <button class="btn sm acc" style="width:auto;padding:8px 14px" onclick="openAdminAddCouponModal()">
+        + Add Coupon
+      </button>
+    </div>
+
+    <div class="adm-table-card">
+      ${cpns.length ? cpns.map((c) => `
+        <div class="adm-svc-row">
+          <div>
+            <b>🏷️ ${esc(c.code)}</b>
+            <div class="mut" style="font-size:11px">${esc(c.title)} · Min order: ${inr(c.min_order_amount || 0)}</div>
+          </div>
+          <div class="row" style="justify-content:flex-end;gap:8px">
+            <span class="adm-badge open">${c.discount_type === 'percentage' ? c.discount_value + '% OFF' : inr(c.discount_value) + ' FLAT'}</span>
+            ${c.id ? `<button class="btn sm ghost" style="color:var(--bad);width:auto;padding:4px 8px;font-size:11px" onclick="deactivateCoupon(${c.id})">Remove</button>` : ''}
+          </div>
+        </div>
+      `).join('') : '<div class="mut">No promo coupons active.</div>'}
+    </div>
+  `;
+}
+
+function admComplaints() {
+  const list = S.admComplaints || [];
+  const filter = S.admComplaintFilter || 'all';
+  const filtered = filter === 'all' ? list : list.filter((c) => c.status === filter);
+
+  return `
+    <div class="chips" style="margin-bottom:12px">
+      <button class="chip ${filter === 'all' ? 'on' : ''}" onclick="S.admComplaintFilter='all';render()">All (${list.length})</button>
+      <button class="chip ${filter === 'open' ? 'on' : ''}" onclick="S.admComplaintFilter='open';render()">Open (${list.filter((c) => c.status === 'open').length})</button>
+      <button class="chip ${filter === 'resolved' ? 'on' : ''}" onclick="S.admComplaintFilter='resolved';render()">Resolved</button>
+    </div>
+
+    ${filtered.length ? filtered.map((c) => `
+      <div class="adm-item-card">
+        <div class="row">
+          <b>Ticket #${c.id}: ${esc(c.category)}</b>
+          <span class="adm-badge ${c.status}">${c.status}</span>
+        </div>
+        <div class="mut" style="font-size:12px;margin:6px 0">
+          Customer: <b>${esc(c.customer_name || 'Customer')}</b> (${esc(c.customer_phone || '')})<br>
+          ${c.booking_id ? `Booking #${c.booking_id}: ${esc(c.service_name || '')} (${inr(c.booking_total || 0)})<br>` : ''}
+          Problem: <span style="color:var(--ink)">"${esc(c.description)}"</span>
+        </div>
+        ${c.refund_requested ? `
+          <div class="adm-badge open" style="margin:4px 0 8px">💰 Customer Requested Refund</div>
+        ` : ''}
+        ${c.resolution_notes ? `
+          <div class="card" style="background:var(--soft);border:none;padding:8px 12px;margin:8px 0;font-size:12px">
+            <b>Resolution Notes:</b> ${esc(c.resolution_notes)}
+            ${c.refund_amount ? `<div style="color:var(--ok);font-weight:700">₹${c.refund_amount} refund issued to customer wallet</div>` : ''}
+          </div>
+        ` : ''}
+        ${c.status !== 'resolved' && c.status !== 'closed' ? `
+          <div class="row" style="margin-top:10px">
+            <button class="btn sm acc" onclick="openAdminResolveModal(${c.id})">
+              👉 Resolve Ticket & Issue Refund
+            </button>
+            <a href="tel:${esc(c.customer_phone)}" class="btn sm ghost" style="text-decoration:none;width:auto;padding:8px 12px">
+              ${ic('phone', 14)} Call Customer
+            </a>
+          </div>
+        ` : ''}
+      </div>
+    `).join('') : '<div class="card mut" style="text-align:center;padding:24px">No support tickets in this view.</div>'}
+  `;
 }
 
 /* ========================================================
@@ -1659,7 +2308,20 @@ async function act(fn) {
 async function refresh() {
   if (!S.user) return;
   try {
-    if (S.user.role === 'worker') {
+    if (S.user.role === 'admin') {
+      const [analyticsRes, bookingsRes, workersRes, complaintsRes, cpnRes] = await Promise.all([
+        api('GET', '/admin/analytics').catch(() => ({ analytics: {} })),
+        api('GET', '/admin/bookings').catch(() => ({ bookings: [] })),
+        api('GET', '/admin/users?role=worker').catch(() => ({ users: [] })),
+        api('GET', '/admin/complaints').catch(() => ({ complaints: [] })),
+        api('GET', '/coupons').catch(() => ({ coupons: [] }))
+      ]);
+      if (analyticsRes && analyticsRes.analytics) S.admAnalytics = analyticsRes.analytics;
+      if (bookingsRes && bookingsRes.bookings) S.admBookings = bookingsRes.bookings;
+      if (workersRes && workersRes.users) S.admWorkers = workersRes.users;
+      if (complaintsRes && complaintsRes.complaints) S.admComplaints = complaintsRes.complaints;
+      S.coupons = cpnRes.coupons || [];
+    } else if (S.user.role === 'worker') {
       const [w, b, statsRes, reviewsRes] = await Promise.all([
         api('GET', '/wallet'),
         api('GET', '/bookings'),
@@ -1672,17 +2334,19 @@ async function refresh() {
       if (statsRes && statsRes.stats) S.wkStats = statsRes.stats;
       if (reviewsRes && reviewsRes.reviews) S.wkReviews = reviewsRes.reviews;
     } else {
-      const [w, b, addrRes, cpnRes] = await Promise.all([
+      const [w, b, addrRes, cpnRes, compRes] = await Promise.all([
         api('GET', '/wallet'),
         api('GET', '/bookings'),
         api('GET', '/addresses').catch(() => ({ addresses: [] })),
-        api('GET', '/coupons').catch(() => ({ coupons: [] }))
+        api('GET', '/coupons').catch(() => ({ coupons: [] })),
+        api('GET', '/complaints/my').catch(() => ({ complaints: [] }))
       ]);
       S.w = w.balance;
       S.tx = w.transactions.map((t) => [t.label, t.amount]);
       S.B = b.bookings;
       S.addresses = addrRes.addresses || [];
       S.coupons = cpnRes.coupons || [];
+      S.myComplaints = compRes.complaints || [];
 
       // Auto-select default address if none chosen
       if (!S.ad && S.addresses.length) {
@@ -1771,7 +2435,7 @@ function render() {
   } else if (S.scr === 'login' || !S.user) {
     a.innerHTML = login();
   } else {
-    a.innerHTML = ({ home, book, bk, mo, wk, pf }[S.scr] || home)() + renderModal();
+    a.innerHTML = ({ home, book, bk, mo, wk, pf, adm }[S.scr] || (S.user?.role === 'admin' ? adm : (S.user?.role === 'worker' ? wk : home)))() + renderModal();
   }
 
   const showNav = S.user && !['splash', 'onboarding', 'login'].includes(S.scr);
@@ -1780,7 +2444,23 @@ function render() {
     nav.style.display = showNav ? '' : 'none';
     if (showNav) {
       const navDiv = nav.querySelector('div');
-      if (S.user.role === 'worker') {
+      if (S.user.role === 'admin') {
+        const cur = S.admTab || 'overview';
+        navDiv.innerHTML = `
+          <button id="adm-overview" onclick="setAdmTab('overview')"><span class="ni" data-i="spark"></span>Overview</button>
+          <button id="adm-bookings" onclick="setAdmTab('bookings')"><span class="ni" data-i="list"></span>Bookings</button>
+          <button id="adm-techs" onclick="setAdmTab('techs')"><span class="ni" data-i="tool"></span>Techs</button>
+          <button id="adm-catalog" onclick="setAdmTab('catalog')"><span class="ni" data-i="tag"></span>Catalog</button>
+          <button id="adm-complaints" onclick="setAdmTab('complaints')"><span class="ni" data-i="alert"></span>Tickets</button>
+        `;
+        $('adm-overview')?.classList.toggle('on', cur === 'overview');
+        $('adm-bookings')?.classList.toggle('on', cur === 'bookings');
+        $('adm-techs')?.classList.toggle('on', cur === 'techs');
+        $('adm-catalog')?.classList.toggle('on', cur === 'catalog');
+        $('adm-complaints')?.classList.toggle('on', cur === 'complaints');
+        const openComplaintsCount = (S.admComplaints || []).filter((c) => c.status === 'open').length;
+        if (openComplaintsCount) $('adm-complaints')?.insertAdjacentHTML('beforeend', `<span class="dot">${openComplaintsCount}</span>`);
+      } else if (S.user.role === 'worker') {
         const cur = S.wkTab || 'jobs';
         navDiv.innerHTML = `
           <button id="w-jobs" onclick="setWkTab('jobs')"><span class="ni" data-i="tool"></span>Jobs</button>
@@ -1826,7 +2506,7 @@ function dataHash() {
 }
 
 setInterval(() => {
-  if (S.user && ['bk', 'wk', 'mo'].includes(S.scr) && !document.hidden && !S.modal && !(document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName))) {
+  if (S.user && ['bk', 'wk', 'mo', 'adm'].includes(S.scr) && !document.hidden && !S.modal && !(document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName))) {
     refresh().then(() => {
       const h = dataHash();
       if (h !== _lastHash) {
@@ -1906,7 +2586,7 @@ setInterval(() => {
   // 5. Navigate after smooth Splash duration
   setTimeout(() => {
     if (S.user) {
-      go(S.user.role === 'worker' ? 'wk' : 'home');
+      go(S.user.role === 'worker' ? 'wk' : (S.user.role === 'admin' ? 'adm' : 'home'));
     } else {
       const onboarded = localStorage.getItem('fm_onboarded');
       if (!onboarded) {
