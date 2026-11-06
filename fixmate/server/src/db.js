@@ -239,6 +239,10 @@ function openMemoryDb() {
       wallet INTEGER NOT NULL DEFAULT 0 CHECK (wallet >= 0),
       online INTEGER NOT NULL DEFAULT 1 CHECK (online IN (0, 1)),
       token_version INTEGER NOT NULL DEFAULT 0 CHECK (token_version >= 0),
+      experience_years INTEGER DEFAULT 2,
+      id_document_url TEXT,
+      id_verified INTEGER DEFAULT 1,
+      service_areas TEXT DEFAULT 'All Dhanbad',
       CHECK (role != 'worker' OR skill IS NOT NULL)
     );
     CREATE TABLE otps (
@@ -277,6 +281,8 @@ function openMemoryDb() {
       coupon_code TEXT,
       discount_amount INTEGER DEFAULT 0,
       is_emergency INTEGER DEFAULT 0,
+      start_photo_url TEXT,
+      complete_photo_url TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE categories (
@@ -515,6 +521,13 @@ function openDb(config = {}) {
             ALTER TABLE bookings ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(30);
             ALTER TABLE bookings ADD COLUMN IF NOT EXISTS discount_amount INTEGER DEFAULT 0;
             ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_emergency SMALLINT DEFAULT 0;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS start_photo_url TEXT;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS complete_photo_url TEXT;
+
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS experience_years INTEGER DEFAULT 2;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS id_document_url TEXT;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS id_verified SMALLINT DEFAULT 1;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS service_areas VARCHAR(255) DEFAULT 'All Dhanbad';
           `);
         } catch (colErr) {
           console.warn('[PostgreSQL Init Notice] Column migration:', colErr.message);

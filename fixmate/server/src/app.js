@@ -149,7 +149,18 @@ function createApp(db = openDb()) {
     }
   };
 
-  const pub = (u) => ({ id: u.id, name: u.name, role: u.role, skill: u.skill, online: Boolean(u.online), phone: u.phone.slice(0, 2) + 'XXXXXX' + u.phone.slice(-2) });
+  const pub = (u) => ({
+    id: u.id,
+    name: u.name,
+    role: u.role,
+    skill: u.skill,
+    online: Boolean(u.online),
+    phone: u.phone.slice(0, 2) + 'XXXXXX' + u.phone.slice(-2),
+    experience_years: u.experience_years != null ? Number(u.experience_years) : 2,
+    id_document_url: u.id_document_url || null,
+    id_verified: u.id_verified != null ? Number(u.id_verified) : 1,
+    service_areas: u.service_areas || 'All Dhanbad'
+  });
 
   const credit = async (uid, label, amount, runner = db) => {
     await runner.query('UPDATE users SET wallet = wallet + $1 WHERE id = $2', [amount, uid]);
@@ -283,6 +294,88 @@ function createApp(db = openDb()) {
     if (typeof req.body.online !== 'boolean') bad(400, 'Online status sahi nahi hai');
     await db.query('UPDATE users SET online = $1 WHERE id = $2', [req.body.online ? 1 : 0, req.user.id]);
     ok(res, { online: req.body.online });
+  }));
+
+  // ---------- Worker / Technician Dashboard & Reviews ----------
+  app.get('/api/worker/stats', auth('worker'), h(async (req, res) => {
+    const uid = req.user.id;
+    const completedRes = await db.queryOne(
+      "SELECT COUNT(*) AS c FROM bookings WHERE worker_id = $1 AND status = 'completed'",
+      [uid]
+    );
+    const activeRes = await db.queryOne(
+      "SELECT COUNT(*) AS c FROM bookings WHERE worker_id = $1 AND status NOT IN ('completed', 'closed', 'cancelled')",
+      [uid]
+    );
+    const totalEarningsRes = await db.queryOne(
+      "SELECT COALESCE(SUM(amount), 0) AS total FROM wallet_tx WHERE user_id = $1 AND amount > 0",
+      [uid]
+    );
+    const ratingRes = await db.queryOne(
+      "SELECT ROUND(AVG(rating)::numeric, 1) AS avg_rating, COUNT(*) AS review_count FROM reviews WHERE worker_id = $1",
+      [uid]
+    );
+
+    ok(res, {
+      stats: {
+        completed_jobs: Number(completedRes ? completedRes.c : 0),
+        active_jobs: Number(activeRes ? activeRes.c : 0),
+        total_earnings: Number(totalEarningsRes ? totalEarningsRes.total : 0),
+        avg_rating: ratingRes && ratingRes.avg_rating ? Number(ratingRes.avg_rating) : 4.8,
+        review_count: Number(ratingRes ? ratingRes.review_count : 0)
+      }
+    });
+  }));
+
+  app.put('/api/worker/profile', auth('worker'), h(async (req, res) => {
+    const { skill, experience_years, service_areas, id_document_url } = req.body;
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (skill && CATEGORIES.includes(skill)) {
+      updates.push(`skill = $${idx++}`);
+      values.push(skill);
+    }
+    if (experience_years !== undefined) {
+      const exp = Math.max(0, Math.min(50, Number(experience_years) || 0));
+      updates.push(`experience_years = $${idx++}`);
+      values.push(exp);
+    }
+    if (service_areas) {
+      updates.push(`service_areas = $${idx++}`);
+      values.push(String(service_areas).trim().slice(0, 255));
+    }
+    if (id_document_url) {
+      updates.push(`id_document_url = $${idx++}`);
+      values.push(String(id_document_url).trim().slice(0, 100000));
+    }
+
+    if (updates.length > 0) {
+      values.push(req.user.id);
+      await db.query(`UPDATE users SET ${updates.join(', ')} WHERE id = $${idx}`, values);
+    }
+
+    const updatedUser = await db.queryOne('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    ok(res, { user: pub(updatedUser), message: 'Technician profile update ho gaya' });
+  }));
+
+  app.get('/api/worker/reviews', auth('worker'), h(async (req, res) => {
+    try {
+      const result = await db.query(
+        `SELECT r.id, r.rating, r.comment, r.created_at, u.name AS customer_name, s.name AS service_name
+         FROM reviews r
+         JOIN bookings b ON b.id = r.booking_id
+         JOIN services s ON s.id = b.service_id
+         JOIN users u ON u.id = r.customer_id
+         WHERE r.worker_id = $1
+         ORDER BY r.id DESC LIMIT 50`,
+        [req.user.id]
+      );
+      ok(res, { reviews: result.rows });
+    } catch {
+      ok(res, { reviews: [] });
+    }
   }));
 
   // ---------- Services ----------
@@ -522,6 +615,8 @@ function createApp(db = openDb()) {
       await db.query(`UPDATE bookings SET start_code_tries = start_code_tries + 1 WHERE id = $1 AND status = 'on_the_way' AND start_code_tries < 5`, [b.id]);
       bad(400, 'Start code galat hai');
     }
+    const photo = req.body.start_photo_url ? String(req.body.start_photo_url).trim().slice(0, 100000) : null;
+    return photo ? { setFields: { start_photo_url: photo } } : {};
   });
 
   step('quote', 'worker', 'inspecting', 'quoted', (b, req) => {
@@ -533,7 +628,10 @@ function createApp(db = openDb()) {
 
   step('approve', 'customer', 'quoted', 'in_progress');
   step('reject', 'customer', 'quoted', 'closed', () => ({ setFields: { total: VISIT_FEE } }));
-  step('complete', 'worker', 'in_progress', 'completed');
+  step('complete', 'worker', 'in_progress', 'completed', (b, req) => {
+    const photo = req.body.complete_photo_url ? String(req.body.complete_photo_url).trim().slice(0, 100000) : null;
+    return photo ? { setFields: { complete_photo_url: photo } } : {};
+  });
 
   app.post('/api/bookings/:id/cancel', auth('customer'), h(async (req, res) => {
     const b = await load(req.params.id);

@@ -1820,4 +1820,87 @@ select {
   background: rgba(0, 106, 96, 0.04);
 }
 
+/* ========================================================
+   PHASE 3: TECHNICIAN APPLICATION STYLING
+   ======================================================== */
+
+.wk-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.wk-kpi-card {
+  background: var(--card);
+  border: 1.5px solid var(--bd);
+  border-radius: 16px;
+  padding: 12px 10px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.wk-kpi-val {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--teal);
+  letter-spacing: -0.02em;
+}
+
+.wk-kpi-lbl {
+  font-size: 11px;
+  color: var(--mut);
+  margin-top: 2px;
+  font-weight: 600;
+}
+
+.wk-online-card {
+  background: var(--card);
+  border: 1.5px solid var(--bd);
+  border-radius: 18px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.job-req-card {
+  background: var(--card);
+  border: 1.5px solid var(--bd);
+  border-left: 5px solid var(--orange);
+  border-radius: 18px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.job-assigned-card {
+  background: var(--card);
+  border: 1.5px solid var(--bd);
+  border-left: 5px solid var(--teal);
+  border-radius: 18px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.job-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--mut);
+  margin: 6px 0 10px;
+  flex-wrap: wrap;
+}
+
+.job-step-box {
+  background: var(--soft);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-top: 10px;
+}
+
+
 

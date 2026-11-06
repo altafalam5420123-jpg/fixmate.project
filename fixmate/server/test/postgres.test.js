@@ -348,4 +348,139 @@ test('Phase 2 Customer Application: Booking with Coupon & Emergency, Reschedule,
   }
 });
 
+test('Phase 3 Technician Application: Worker Stats, Profile, Photo Proof, and Reviews', async () => {
+  const jwt = require('jsonwebtoken');
+  const { createApp } = require('../src/app');
+  const db = openDb(':memory:');
+  await db.initDb();
+
+  const custId = db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet) VALUES ('9444444444', 'Phase3 Customer', 'customer', null, 3000)").run().lastInsertRowid;
+  const workerId = db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet, online, experience_years, service_areas) VALUES ('9555555555', 'Expert Tech', 'worker', 'Plumber', 0, 1, 5, 'Saraidhela, Dhanbad')").run().lastInsertRowid;
+
+  const custToken = jwt.sign({ id: Number(custId), tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+  const workerToken = jwt.sign({ id: Number(workerId), tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+
+  const server = createApp(db).listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://localhost:${server.address().port}`;
+
+  try {
+    // 1. Worker Stats (Initial)
+    const statsRes = await fetch(`${base}/api/worker/stats`, {
+      headers: { Authorization: `Bearer ${workerToken}` }
+    });
+    assert.equal(statsRes.status, 200);
+    const statsData = await statsRes.json();
+    assert.equal(statsData.success, true);
+    assert.equal(statsData.stats.completed_jobs, 0);
+
+    // 2. Role Security Check: Customer cannot access worker stats
+    const custDenyRes = await fetch(`${base}/api/worker/stats`, {
+      headers: { Authorization: `Bearer ${custToken}` }
+    });
+    assert.equal(custDenyRes.status, 403);
+
+    // 3. Worker Profile Update
+    const profRes = await fetch(`${base}/api/worker/profile`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({
+        experience_years: 7,
+        service_areas: 'Saraidhela, Bank More, Hirapur',
+        id_document_url: 'data:image/png;base64,AadhaarVerified'
+      })
+    });
+    assert.equal(profRes.status, 200);
+    const profData = await profRes.json();
+    assert.equal(profData.success, true);
+    assert.equal(profData.user.experience_years, 7);
+    assert.equal(profData.user.service_areas, 'Saraidhela, Bank More, Hirapur');
+
+    // 4. Booking Flow with Start and Complete Photo Proof
+    const bookRes = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({
+        serviceId: 4, // Tap aur leakage repair (Plumber, ₹149)
+        slot: 'Aaj 6 se 8 PM',
+        address: 'House 5, Hirapur, Dhanbad',
+        pay: 'wallet'
+      })
+    });
+    const bookData = await bookRes.json();
+    const bId = bookData.booking.id;
+
+    // Worker accepts and travels
+    await fetch(`${base}/api/bookings/${bId}/accept`, { method: 'POST', headers: { Authorization: `Bearer ${workerToken}` } });
+    await fetch(`${base}/api/bookings/${bId}/on-the-way`, { method: 'POST', headers: { Authorization: `Bearer ${workerToken}` } });
+
+    // Worker starts with 4-digit code and attaches start inspection photo
+    const startRes = await fetch(`${base}/api/bookings/${bId}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({
+        code: bookData.booking.start_code,
+        start_photo_url: 'data:image/jpeg;base64,startPhotoData'
+      })
+    });
+    assert.equal(startRes.status, 200);
+    const startData = await startRes.json();
+    assert.equal(startData.booking.status, 'inspecting');
+
+    // Quote and customer approval
+    await fetch(`${base}/api/bookings/${bId}/quote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({ parts: 100 })
+    });
+    await fetch(`${base}/api/bookings/${bId}/approve`, { method: 'POST', headers: { Authorization: `Bearer ${custToken}` } });
+
+    // Worker completes job and attaches completion photo proof
+    const compRes = await fetch(`${base}/api/bookings/${bId}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({
+        complete_photo_url: 'data:image/jpeg;base64,completePhotoData'
+      })
+    });
+    assert.equal(compRes.status, 200);
+    const compData = await compRes.json();
+    assert.equal(compData.booking.status, 'completed');
+
+    // Customer pays
+    await fetch(`${base}/api/bookings/${bId}/pay`, { method: 'POST', headers: { Authorization: `Bearer ${custToken}` } });
+
+    // Customer leaves 5-star review
+    await fetch(`${base}/api/reviews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({
+        booking_id: bId,
+        rating: 5,
+        comment: 'Super fast plumbing fix! Highly recommend.'
+      })
+    });
+
+    // 5. Worker checks updated stats & reviews list
+    const finalStatsRes = await fetch(`${base}/api/worker/stats`, {
+      headers: { Authorization: `Bearer ${workerToken}` }
+    });
+    const finalStatsData = await finalStatsRes.json();
+    assert.equal(finalStatsData.stats.completed_jobs, 1);
+    assert.ok(finalStatsData.stats.total_earnings > 0);
+    assert.equal(finalStatsData.stats.avg_rating, 5);
+
+    const workerReviewsRes = await fetch(`${base}/api/worker/reviews`, {
+      headers: { Authorization: `Bearer ${workerToken}` }
+    });
+    const workerReviewsData = await workerReviewsRes.json();
+    assert.equal(workerReviewsData.reviews.length, 1);
+    assert.equal(workerReviewsData.reviews[0].comment, 'Super fast plumbing fix! Highly recommend.');
+  } finally {
+    server.close();
+    await db.close();
+  }
+});
+
+
 

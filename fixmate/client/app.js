@@ -132,6 +132,11 @@ let S = {
   reviewBookingId: null,
   reviewRating: 5,
   reviewComment: '',
+  wkTab: 'jobs',
+  wkStats: { completed_jobs: 0, active_jobs: 0, total_earnings: 0, avg_rating: 4.8, review_count: 0 },
+  wkReviews: [],
+  wkStartPhotos: {},
+  wkCompletePhotos: {},
   user: null,
   lg: { step: 0, ph: '', otp: '', tries: 0, exp: 0, rs: 0 }
 };
@@ -953,71 +958,382 @@ function pf() {
 }
 
 /* ========================================================
-   SCREEN 9: WORKER APPLICATION SCREEN
+   SCREEN 9: TECHNICIAN APPLICATION (SEPARATE INTERFACE)
    ======================================================== */
+function setWkTab(t) {
+  S.wkTab = t;
+  render();
+  scrollTo(0, 0);
+}
+
 function setOnline(online) {
   act(async () => {
     const d = await api('POST', '/me/online', { online });
     S.user.online = d.online;
     render();
+    toast(d.online ? 'Aap Online hain (Jobs aayengi)' : 'Aap Offline ho gaye');
   });
 }
 
 function wk() {
+  const tab = S.wkTab || 'jobs';
+  if (tab === 'earnings') return wk_earnings();
+  if (tab === 'reviews') return wk_reviews();
+  if (tab === 'profile') return wk_profile();
+  return wk_jobs();
+}
+
+function wk_jobs() {
   const u = S.user, on = u.online !== false;
   const open = S.B.filter((b) => b.status === 'requested');
   const mine = S.B.filter((b) => b.status !== 'requested' && b.status !== 'cancelled');
 
-  return `<h2 style="font-size:22px;margin-top:20px">Technician Portal</h2>
-  <div class="card row">
-    <div>
-      <b>${esc(u.name)}</b>
-      <div class="mut">${esc(u.skill)} Expert</div>
+  return `<div class="hd" style="margin-bottom:12px;border-radius:0 0 24px 24px">
+    <div class="row">
+      <div>
+        <b style="font-size:20px">${esc(u.name)}</b>
+        <div style="font-size:12.5px;opacity:0.9">${esc(u.skill)} Expert • ⭐ ${S.wkStats.avg_rating || 4.8}</div>
+      </div>
+      <button class="ic" onclick="out()" aria-label="Logout">${ic('user', 18)}</button>
     </div>
-    <button class="btn sm ghost" onclick="out()">Logout</button>
   </div>
-  <div class="card row">
-    <span>Online (Naye job requests dekhein)</span>
+
+  <!-- Availability Card -->
+  <div class="wk-online-card">
+    <div>
+      <b style="font-size:15px">${on ? '🟢 Online (Jobs Active)' : '⚪ Offline (Duty Off)'}</b>
+      <div class="mut" style="font-size:12px">${on ? 'Naye customer booking requests mil rahe hain' : 'Toggle karein job requests paane ke liye'}</div>
+    </div>
     <button class="tg ${on ? 'on' : ''}" onclick="setOnline(${!on})" aria-label="Online toggle"></button>
   </div>
-  <div class="hd" style="border-radius:22px;margin:0 0 12px">
-    <div>Kamai (Wallet)</div>
-    <b style="font-size:34px">${inr(S.w)}</b>
-    <div style="font-size:13px">Har kaam pe 85% aapka, 15% platform ka</div>
+
+  <!-- KPI Row -->
+  <div class="wk-kpi-row">
+    <div class="wk-kpi-card">
+      <div class="wk-kpi-val">${mine.length}</div>
+      <div class="wk-kpi-lbl">Active Jobs</div>
+    </div>
+    <div class="wk-kpi-card">
+      <div class="wk-kpi-val">${S.wkStats.completed_jobs || 0}</div>
+      <div class="wk-kpi-lbl">Completed</div>
+    </div>
+    <div class="wk-kpi-card" onclick="setWkTab('earnings')" style="cursor:pointer">
+      <div class="wk-kpi-val">${inr(S.w)}</div>
+      <div class="wk-kpi-lbl">Wallet Kamai</div>
+    </div>
   </div>
-  <h2>Naye Requests</h2>
-  ${on ? (open.length ? open.map(wcard).join('') : '<div class="card mut">Abhi koi naya request nahi mila.</div>') : '<div class="card mut">Aap offline hain. Jobs lene ke liye Online toggle karein.</div>'}
-  <h2>Mere Active Jobs</h2>
-  ${mine.length ? mine.map(wcard).join('') : '<div class="card mut">Abhi koi assigned kaam nahi hai.</div>'}`;
+
+  <!-- Section: Incoming Job Requests -->
+  <h2 style="font-size:18px;margin:16px 0 8px">Naye Requests (${open.length})</h2>
+  ${on ? (
+    open.length ? open.map(wreqCard).join('') : `
+      <div class="card mut" style="text-align:center;padding:20px">
+        ${ic('tool', 28)}
+        <div style="margin-top:6px;font-size:13px">Abhi koi naya request nahi mila. Jaise hi koi customer book karega, yahan dikhai dega.</div>
+      </div>
+    `
+  ) : `
+    <div class="card mut" style="text-align:center;padding:16px">
+      Aap Offline hain. Naye jobs dekhne ke liye Online switch on karein.
+    </div>
+  `}
+
+  <!-- Section: Assigned Active Jobs -->
+  <h2 style="font-size:18px;margin:20px 0 8px">Mere Active Jobs (${mine.length})</h2>
+  ${mine.length ? mine.map(wcard).join('') : `
+    <div class="card mut" style="text-align:center;padding:20px">
+      ${ic('check', 28)}
+      <div style="margin-top:6px;font-size:13px">Abhi koi assigned job nahi hai. Naye request accept karein.</div>
+    </div>
+  `}`;
+}
+
+function wreqCard(b) {
+  return `<div class="job-req-card">
+    <div class="row">
+      <b style="font-size:15px">${esc(b.service)}</b>
+      <span class="badge" style="background:#FEF3C7;color:#D97706">Naya Request</span>
+    </div>
+    <div class="job-meta-row">
+      <span>${ic('pin', 14)} ${esc(b.address)}</span>
+      <span>${ic('clock', 14)} ${esc(b.slot)}</span>
+    </div>
+    ${b.is_emergency ? `<div class="badge" style="background:#FEE2E2;color:#DC2626;margin-bottom:8px">🚨 Urgent Emergency Booking</div>` : ''}
+    ${b.issue_desc ? `<div class="card" style="background:var(--soft);border:none;padding:8px 10px;margin-bottom:8px;font-size:12.5px"><b>Dikkat:</b> ${esc(b.issue_desc)}</div>` : ''}
+    ${b.photo_url ? `<img src="${b.photo_url}" class="photo-preview-thumb" style="max-height:100px;margin-bottom:8px" alt="Customer issue photo">` : ''}
+    <div class="row" style="margin-top:8px">
+      <button class="btn sm acc" style="flex:2" onclick="post(${b.id},'accept',null,'Job accept kiya!')">✅ Accept Job</button>
+      <button class="btn sm ghost" style="flex:1" onclick="toast('Job pass kar diya')">Pass</button>
+    </div>
+  </div>`;
 }
 
 function wcard(b) {
   const a = b.status;
-  const bt = (c, t) => `<button class="btn" style="margin-top:8px" onclick="${c}">${t}</button>`;
+  const mapQuery = encodeURIComponent(b.address + ', Dhanbad, Jharkhand');
 
-  return `<div class="card" style="margin-bottom:12px">
+  return `<div class="job-assigned-card">
     <div class="row">
-      <b>${esc(b.service)}</b>
-      <span class="badge">${esc(b.label)}</span>
+      <b style="font-size:15px">${esc(b.service)}</b>
+      <span class="badge ${b.paid ? 'ok' : ''}">${esc(b.label)}</span>
     </div>
-    <div class="mut">${esc(b.slot)}, ${esc(b.address)}</div>
-    ${b.issue_desc ? `<div class="card" style="background:var(--soft);border:none;padding:6px 10px;margin:6px 0;font-size:12px"><b>Customer Note:</b> ${esc(b.issue_desc)}</div>` : ''}
-    ${b.contact_phone && a !== 'requested' ? `<a href="tel:${esc(b.contact_phone)}" class="btn sm" style="text-decoration:none;margin-top:10px;background:var(--sec);color:#fff">${ic('phone', 16)} Customer ko call karo (${esc(b.contact_phone)})</a>` : ''}
-    ${a === 'requested' ? bt(`post(${b.id},'accept',null,'Job accept kiya')`, 'Accept Karo') : ''}
-    ${a === 'assigned' ? bt(`post(${b.id},'on-the-way',null,'Customer ko bata diya')`, 'Main Nikal Gaya') : ''}
+    <div class="job-meta-row">
+      <span>${ic('pin', 14)} ${esc(b.address)}</span>
+      <span>${ic('clock', 14)} ${esc(b.slot)}</span>
+    </div>
+
+    ${b.issue_desc ? `<div class="card" style="background:var(--soft);border:none;padding:8px 10px;margin-bottom:8px;font-size:12.5px"><b>Customer Note:</b> ${esc(b.issue_desc)}</div>` : ''}
+
+    <!-- Quick Navigation & Call Buttons -->
+    <div class="row" style="margin-bottom:10px">
+      <a href="https://www.google.com/maps/search/?api=1&query=${mapQuery}" target="_blank" rel="noopener" class="btn sm ghost" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px">
+        ${ic('pin', 14)} Map Pe Dekhein
+      </a>
+      ${b.contact_phone ? `
+        <a href="tel:${esc(b.contact_phone)}" class="btn sm" style="text-decoration:none;background:var(--sec);color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:6px">
+          ${ic('phone', 14)} Call Customer
+        </a>
+      ` : ''}
+    </div>
+
+    <!-- Lifecycle Actions -->
+    ${a === 'assigned' ? `
+      <button class="btn acc" onclick="post(${b.id},'on-the-way',null,'Customer ko notify kiya: Aap raste mein hain')">
+        🛵 Main Nikal Gaya (On The Way)
+      </button>
+    ` : ''}
+
     ${a === 'on_the_way' ? `
-      <input id="c${b.id}" type="tel" inputmode="numeric" maxlength="4" placeholder="Customer ka 4 digit start code" style="margin-top:8px">
-      ${bt(`post(${b.id},'start',{code:$('c${b.id}').value.trim()},'Kaam shuru')`, 'Code Se Kaam Shuru Karo')}
+      <div class="job-step-box">
+        <div style="font-weight:700;font-size:13px;margin-bottom:4px">Customer ke ghar pahunch kar 4-digit code daalein:</div>
+        <input id="c${b.id}" type="tel" inputmode="numeric" maxlength="4" placeholder="----" style="font-size:24px;letter-spacing:8px;text-align:center;font-weight:800;margin:6px 0">
+        
+        <label class="btn sm ghost" style="display:block;margin:6px 0;cursor:pointer">
+          <input type="file" accept="image/*" style="display:none" onchange="onWorkerStartPhoto(event, ${b.id})">
+          ${S.wkStartPhotos[b.id] ? '📷 Start Photo Proof Attached' : '📷 Start Photo Proof (Optional)'}
+        </label>
+        
+        <button class="btn acc" onclick="workerStartJob(${b.id})">Code Verify & Kaam Shuru</button>
+      </div>
     ` : ''}
+
     ${a === 'inspecting' ? `
-      <input id="q${b.id}" type="number" min="0" placeholder="Parts ka kharcha (₹), 0 bhi chalega" style="margin-top:8px">
-      <div class="mut" style="margin-bottom:8px">Service charge ${inr(b.price)} alag se judega.</div>
-      ${bt(`post(${b.id},'quote',{parts:+$('q${b.id}').value||0},'Quote bhej diya')`, 'Quote Bhejo')}
+      <div class="job-step-box">
+        <div style="font-weight:700;font-size:13px">Inspection Poora: Quote Bhejein</div>
+        <div class="mut" style="font-size:12px;margin:4px 0 8px">Service visiting/base fee ${inr(b.price)} jud chuka hai. Spare parts ka kharcha daalein:</div>
+        <input id="q${b.id}" type="number" min="0" placeholder="Spare parts ka kharcha (₹), 0 agar koi part nahi" style="margin-bottom:8px">
+        <button class="btn acc" onclick="post(${b.id},'quote',{parts:+$('q${b.id}').value||0},'Quote bhej diya! Customer approval ka intezaar karein.')">
+          Quote Bhejo (Customer Approval)
+        </button>
+      </div>
     ` : ''}
-    ${a === 'quoted' ? '<div class="mut" style="margin-top:8px">Customer ke manzoori ka intezaar hai...</div>' : ''}
-    ${a === 'in_progress' ? bt(`post(${b.id},'complete',null,'Kaam poora')`, 'Kaam Poora Hua') : ''}
-    ${a === 'completed' || a === 'closed' ? `<div class="mut" style="margin-top:8px">${b.paid ? 'Payment mil gayi, aapka hissa wallet mein jud gaya.' : 'Customer ke payment ka intezaar hai.'}</div>` : ''}
+
+    ${a === 'quoted' ? `
+      <div class="card" style="background:rgba(250,106,0,0.06);border-color:var(--sec);margin-top:10px">
+        <div style="font-weight:700;color:var(--sec);font-size:13px">⏳ Customer Approval Pending</div>
+        <div class="mut" style="font-size:12px;margin-top:4px">Quote Total: <b>${inr(b.total)}</b> (Service: ${inr(b.price)} + Parts: ${inr(b.parts)})</div>
+        <div class="mut" style="font-size:11px">Customer app par quote manzoor hone par status apne aap update hoga.</div>
+      </div>
+    ` : ''}
+
+    ${a === 'in_progress' ? `
+      <div class="job-step-box">
+        <div style="font-weight:700;font-size:13px;color:var(--teal)">🛠️ Kaam Chal Raha Hai</div>
+        <div class="mut" style="font-size:12px;margin:4px 0 8px">Kaam khatam hone par final photo attach karein aur complete mark karein:</div>
+        
+        <label class="btn sm ghost" style="display:block;margin:6px 0;cursor:pointer">
+          <input type="file" accept="image/*" style="display:none" onchange="onWorkerCompletePhoto(event, ${b.id})">
+          ${S.wkCompletePhotos[b.id] ? '📷 Completion Photo Proof Attached' : '📷 Completion Photo Proof (Optional)'}
+        </label>
+        
+        <button class="btn acc" onclick="workerCompleteJob(${b.id})">✅ Kaam Poora Hua (Mark Complete)</button>
+      </div>
+    ` : ''}
+
+    ${a === 'completed' || a === 'closed' ? `
+      <div class="card" style="background:var(--soft);border:none;margin-top:10px;padding:10px 12px">
+        <b>${b.paid ? '✅ Payment Received!' : '⏳ Payment Pending'}</b>
+        <div class="mut" style="font-size:12px;margin-top:2px">
+          ${b.paid ? `Aapka hissa ${inr(Math.round(b.total * 0.85))} FixMate wallet mein jud chuka hai.` : `Customer dwara ${inr(b.total)} ka payment pending hai.`}
+        </div>
+      </div>
+    ` : ''}
   </div>`;
+}
+
+function onWorkerStartPhoto(ev, id) {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    S.wkStartPhotos[id] = e.target.result;
+    render();
+    toast('Start photo attach ho gayi!');
+  };
+  reader.readAsDataURL(file);
+}
+
+function onWorkerCompletePhoto(ev, id) {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    S.wkCompletePhotos[id] = e.target.result;
+    render();
+    toast('Completion photo attach ho gayi!');
+  };
+  reader.readAsDataURL(file);
+}
+
+function workerStartJob(id) {
+  const code = ($('c' + id)?.value || '').trim();
+  if (!code || code.length !== 4) {
+    toast('Customer ka 4-digit code daalein');
+    return;
+  }
+  const photo = S.wkStartPhotos[id] || null;
+  act(async () => {
+    await api('POST', `/bookings/${id}/start`, { code, start_photo_url: photo });
+    await refresh();
+    render();
+    toast('Start code verify ho gaya! Kaam shuru.');
+  });
+}
+
+function workerCompleteJob(id) {
+  const photo = S.wkCompletePhotos[id] || null;
+  act(async () => {
+    await api('POST', `/bookings/${id}/complete`, { complete_photo_url: photo });
+    await refresh();
+    render();
+    toast('Kaam poora mark ho gaya! Bill generate hua.');
+  });
+}
+
+function wk_earnings() {
+  const u = S.user;
+  return `<div class="hd" style="border-radius:0 0 24px 24px;margin-bottom:14px">
+    <div>Kamai & Wallet</div>
+    <b style="font-size:34px">${inr(S.w)}</b>
+    <div style="font-size:13px;opacity:0.9;margin-top:4px">Total Lifetime Kamai: ${inr(S.wkStats.total_earnings || S.w)}</div>
+  </div>
+
+  <div class="card" style="border-left:4px solid var(--teal)">
+    <div style="font-weight:800;font-size:15px;color:var(--teal)">💰 FixMate Partner Payout Model</div>
+    <div class="row" style="margin-top:8px">
+      <span>Technician Share (Aapka Hissa)</span>
+      <b style="color:var(--ok)">85%</b>
+    </div>
+    <div class="row" style="margin-top:4px">
+      <span>Platform Fee (Support + Guarantee)</span>
+      <b class="mut">15%</b>
+    </div>
+    <div class="mut" style="font-size:11.5px;margin-top:8px">Har payment poora hone par aapka 85% hissa turant wallet mein credit hota hai.</div>
+  </div>
+
+  <h2 style="font-size:18px;margin:18px 0 10px">Earnings & Transaction History</h2>
+  ${S.tx.length ? S.tx.map((t) => `
+    <div class="card row" style="margin-bottom:8px">
+      <div>
+        <div style="font-weight:700;font-size:13.5px">${esc(t[0])}</div>
+        <div class="mut" style="font-size:11px">Verified Payout</div>
+      </div>
+      <b style="font-size:15px;color:${t[1] < 0 ? 'var(--bad)' : 'var(--ok)'}">
+        ${t[1] < 0 ? '-' : '+'}${inr(Math.abs(t[1]))}
+      </b>
+    </div>
+  `).join('') : '<div class="card mut">Abhi koi transaction nahi hai.</div>'}`;
+}
+
+function wk_reviews() {
+  const rating = S.wkStats.avg_rating || 4.8;
+  const count = S.wkStats.review_count || S.wkReviews.length;
+
+  return `<h2 style="font-size:22px;margin-top:20px">Ratings & Customer Reviews</h2>
+  
+  <div class="card" style="text-align:center;padding:24px 16px;margin-bottom:16px">
+    <div style="font-size:42px;font-weight:800;color:var(--sec);line-height:1">${rating}</div>
+    <div class="star-rating-row" style="margin:8px 0">
+      ${[1, 2, 3, 4, 5].map((s) => `<span style="font-size:22px;color:${s <= Math.round(rating) ? '#F59E0B' : '#CBD5E1'}">★</span>`).join('')}
+    </div>
+    <div class="mut" style="font-size:13px">${count} Verified Customer Reviews</div>
+    <div class="badge ok" style="display:inline-block;margin-top:10px">Top Rated Technician</div>
+  </div>
+
+  <h2 style="font-size:18px;margin-bottom:10px">Customer Feedback</h2>
+  ${S.wkReviews.length ? S.wkReviews.map((r) => `
+    <div class="card" style="margin-bottom:10px">
+      <div class="row">
+        <b>${esc(r.customer_name || 'Customer')}</b>
+        <span class="badge" style="background:#FEF3C7;color:#D97706">⭐ ${r.rating}/5</span>
+      </div>
+      <div class="mut" style="font-size:11.5px;margin:2px 0 6px">${esc(r.service_name || 'Service')}</div>
+      ${r.comment ? `<div style="font-size:13px;line-height:1.4">"${esc(r.comment)}"</div>` : '<div class="mut" style="font-size:12px">Rating di gayi</div>'}
+    </div>
+  `).join('') : `
+    <div class="card mut" style="text-align:center;padding:20px">
+      Abhi koi review nahi mila. Completed jobs ke baad customer feedback yahan aayega.
+    </div>
+  `}`;
+}
+
+function wk_profile() {
+  const u = S.user || {};
+  return `<h2 style="font-size:22px;margin-top:20px">Technician Profile & Verification</h2>
+
+  <div class="card row" style="justify-content:flex-start;margin-bottom:14px">
+    <div class="av" style="background:var(--teal)">${esc((u.name || 'W')[0].toUpperCase())}</div>
+    <div>
+      <b style="font-size:16px">${esc(u.name)}</b>
+      <div class="mut">+91 ${esc(u.phone)}</div>
+      <div style="margin-top:4px">
+        ${u.id_verified ? '<span class="badge ok">🛡️ FixMate Verified Pro</span>' : '<span class="badge" style="background:#FEF3C7;color:#D97706">⚠️ Verification In Review</span>'}
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0 0 12px;font-size:16px">Profile Information</h3>
+    
+    <label style="font-size:13px;font-weight:700">Kaam ka prakar (Skill / Category)</label>
+    <select id="wk-skill" style="margin:6px 0 12px;padding:12px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
+      ${CATS.map((c) => `<option value="${c}" ${u.skill === c ? 'selected' : ''}>${c}</option>`).join('')}
+    </select>
+
+    <label style="font-size:13px;font-weight:700">Experience (Kitne saal ka tajurba hai?)</label>
+    <input id="wk-exp" type="number" min="0" max="40" value="${esc(u.experience_years != null ? u.experience_years : 3)}" style="margin:6px 0 12px">
+
+    <label style="font-size:13px;font-weight:700">Service Areas in Dhanbad</label>
+    <input id="wk-areas" placeholder="e.g. Saraidhela, Bank More, Hirapur, Katras" value="${esc(u.service_areas || 'All Dhanbad')}" style="margin:6px 0 14px">
+
+    <button class="btn acc" onclick="saveWorkerProfile()">Save Profile Changes</button>
+  </div>
+
+  <button class="btn ghost" style="margin-top:16px;color:var(--bad);width:100%" onclick="out()">
+    Logout & Switch Account
+  </button>`;
+}
+
+function saveWorkerProfile() {
+  const skill = $('wk-skill')?.value;
+  const exp = +$('wk-exp')?.value || 0;
+  const areas = $('wk-areas')?.value;
+
+  act(async () => {
+    const res = await api('PUT', '/worker/profile', {
+      skill,
+      experience_years: exp,
+      service_areas: areas
+    });
+    S.user = res.user;
+    try {
+      const stored = JSON.parse(localStorage.getItem('fm_auth') || '{}');
+      stored.u = res.user;
+      localStorage.setItem('fm_auth', JSON.stringify(stored));
+    } catch (e) {}
+    render();
+    toast('Technician profile update ho gaya!');
+  });
 }
 
 /* ========================================================
@@ -1343,23 +1659,37 @@ async function act(fn) {
 async function refresh() {
   if (!S.user) return;
   try {
-    const [w, b, addrRes, cpnRes] = await Promise.all([
-      api('GET', '/wallet'),
-      api('GET', '/bookings'),
-      S.user.role === 'customer' ? api('GET', '/addresses').catch(() => ({ addresses: [] })) : Promise.resolve({ addresses: [] }),
-      api('GET', '/coupons').catch(() => ({ coupons: [] }))
-    ]);
-    S.w = w.balance;
-    S.tx = w.transactions.map((t) => [t.label, t.amount]);
-    S.B = b.bookings;
-    S.addresses = addrRes.addresses || [];
-    S.coupons = cpnRes.coupons || [];
+    if (S.user.role === 'worker') {
+      const [w, b, statsRes, reviewsRes] = await Promise.all([
+        api('GET', '/wallet'),
+        api('GET', '/bookings'),
+        api('GET', '/worker/stats').catch(() => ({ stats: {} })),
+        api('GET', '/worker/reviews').catch(() => ({ reviews: [] }))
+      ]);
+      S.w = w.balance;
+      S.tx = w.transactions.map((t) => [t.label, t.amount]);
+      S.B = b.bookings;
+      if (statsRes && statsRes.stats) S.wkStats = statsRes.stats;
+      if (reviewsRes && reviewsRes.reviews) S.wkReviews = reviewsRes.reviews;
+    } else {
+      const [w, b, addrRes, cpnRes] = await Promise.all([
+        api('GET', '/wallet'),
+        api('GET', '/bookings'),
+        api('GET', '/addresses').catch(() => ({ addresses: [] })),
+        api('GET', '/coupons').catch(() => ({ coupons: [] }))
+      ]);
+      S.w = w.balance;
+      S.tx = w.transactions.map((t) => [t.label, t.amount]);
+      S.B = b.bookings;
+      S.addresses = addrRes.addresses || [];
+      S.coupons = cpnRes.coupons || [];
 
-    // Auto-select default address if none chosen
-    if (!S.ad && S.addresses.length) {
-      const def = S.addresses.find((a) => a.is_default) || S.addresses[0];
-      S.ad = def.address_line + (def.landmark ? ', ' + def.landmark : '') + ', ' + def.city;
-      S.activeAddrId = def.id;
+      // Auto-select default address if none chosen
+      if (!S.ad && S.addresses.length) {
+        const def = S.addresses.find((a) => a.is_default) || S.addresses[0];
+        S.ad = def.address_line + (def.landmark ? ', ' + def.landmark : '') + ', ' + def.city;
+        S.activeAddrId = def.id;
+      }
     }
   } catch (e) {
     // Failsafe quiet refresh
@@ -1433,7 +1763,6 @@ function topup(a) {
    ======================================================== */
 function render() {
   const a = $('app');
-  document.querySelectorAll('.ni').forEach((e) => e.innerHTML = ic(e.dataset.i, 22));
 
   if (S.scr === 'splash') {
     a.innerHTML = splash();
@@ -1445,17 +1774,43 @@ function render() {
     a.innerHTML = ({ home, book, bk, mo, wk, pf }[S.scr] || home)() + renderModal();
   }
 
-  $('n-home').classList.toggle('on', S.scr === 'home' || S.scr === 'book');
-  $('n-bk').classList.toggle('on', S.scr === 'bk');
-  $('n-mo').classList.toggle('on', S.scr === 'mo');
-  if ($('n-pf')) $('n-pf').classList.toggle('on', S.scr === 'pf');
-  const actCount = S.B.filter((b) => !b.paid && b.status !== 'cancelled').length;
-  const o = document.querySelector('#n-bk .dot');
-  if (o) o.remove();
-  if (actCount) $('n-bk').insertAdjacentHTML('beforeend', `<span class="dot">${actCount}</span>`);
+  const showNav = S.user && !['splash', 'onboarding', 'login'].includes(S.scr);
+  const nav = document.querySelector('.nav');
+  if (nav) {
+    nav.style.display = showNav ? '' : 'none';
+    if (showNav) {
+      const navDiv = nav.querySelector('div');
+      if (S.user.role === 'worker') {
+        const cur = S.wkTab || 'jobs';
+        navDiv.innerHTML = `
+          <button id="w-jobs" onclick="setWkTab('jobs')"><span class="ni" data-i="tool"></span>Jobs</button>
+          <button id="w-earnings" onclick="setWkTab('earnings')"><span class="ni" data-i="wallet"></span>Earnings</button>
+          <button id="w-reviews" onclick="setWkTab('reviews')"><span class="ni" data-i="star"></span>Reviews</button>
+          <button id="w-profile" onclick="setWkTab('profile')"><span class="ni" data-i="user"></span>Profile</button>
+        `;
+        $('w-jobs')?.classList.toggle('on', cur === 'jobs');
+        $('w-earnings')?.classList.toggle('on', cur === 'earnings');
+        $('w-reviews')?.classList.toggle('on', cur === 'reviews');
+        $('w-profile')?.classList.toggle('on', cur === 'profile');
+      } else {
+        navDiv.innerHTML = `
+          <button id="n-home" onclick="go('home')"><span class="ni" data-i="home"></span>Home</button>
+          <button id="n-bk" onclick="go('bk')"><span class="ni" data-i="list"></span>Bookings</button>
+          <button id="n-mo" onclick="go('mo')"><span class="ni" data-i="wallet"></span>Money</button>
+          <button id="n-pf" onclick="go('pf')"><span class="ni" data-i="user"></span>Profile</button>
+        `;
+        $('n-home')?.classList.toggle('on', S.scr === 'home' || S.scr === 'book');
+        $('n-bk')?.classList.toggle('on', S.scr === 'bk');
+        $('n-mo')?.classList.toggle('on', S.scr === 'mo');
+        $('n-pf')?.classList.toggle('on', S.scr === 'pf');
+        const actCount = S.B.filter((b) => !b.paid && b.status !== 'cancelled').length;
+        if (actCount) $('n-bk')?.insertAdjacentHTML('beforeend', `<span class="dot">${actCount}</span>`);
+      }
+    }
+  }
 
-  const showNav = S.user && S.user.role === 'customer' && !['splash', 'onboarding', 'login'].includes(S.scr);
-  document.querySelector('.nav').style.display = showNav ? '' : 'none';
+  // Populate all SVG icons across DOM
+  document.querySelectorAll('.ni').forEach((e) => e.innerHTML = ic(e.dataset.i, 22));
 }
 
 let _lastHash = '';
