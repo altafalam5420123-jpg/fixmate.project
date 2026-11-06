@@ -231,3 +231,121 @@ test('Phase 1 API Extensions: Categories, Addresses, and Coupons', async () => {
   }
 });
 
+test('Phase 2 Customer Application: Booking with Coupon & Emergency, Reschedule, and Reviews', async () => {
+  const jwt = require('jsonwebtoken');
+  const { createApp } = require('../src/app');
+  const db = openDb(':memory:');
+  await db.initDb();
+
+  // Seed user, worker, and coupon
+  const custId = db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet) VALUES ('9222222222', 'Test Customer', 'customer', null, 2000)").run().lastInsertRowid;
+  const workerId = db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet, online) VALUES ('9333333333', 'Test Worker', 'worker', 'Electrician', 500, 1)").run().lastInsertRowid;
+  db.sqlite.prepare("INSERT INTO coupons (code, title, discount_type, discount_value, min_order_amount, max_discount, is_active) VALUES ('WELCOME50', '10% Off', 'percentage', 10, 100, 50, 1)").run();
+
+  const custToken = jwt.sign({ id: Number(custId), tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+  const workerToken = jwt.sign({ id: Number(workerId), tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+
+  const server = createApp(db).listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://localhost:${server.address().port}`;
+
+  try {
+    // 1. Create booking with coupon, issue description, photo, and emergency flag
+    const bookRes = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({
+        serviceId: 1, // Switch aur socket repair (₹149)
+        slot: 'Abhi (60 min mein)',
+        address: 'House 12, Saraidhela, Dhanbad',
+        pay: 'wallet',
+        issue_desc: 'Main switch sparking and burnt smell',
+        photo_url: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==',
+        coupon_code: 'WELCOME50',
+        is_emergency: 1
+      })
+    });
+    assert.equal(bookRes.status, 201);
+    const bookData = await bookRes.json();
+    assert.equal(bookData.success, true);
+    const bId = bookData.booking.id;
+    assert.equal(bookData.booking.coupon_code, 'WELCOME50');
+    assert.ok(bookData.booking.discount_amount > 0);
+    assert.equal(bookData.booking.is_emergency, 1);
+    assert.equal(bookData.booking.issue_desc, 'Main switch sparking and burnt smell');
+
+    // 2. Reschedule booking (while in requested status)
+    const reschedRes = await fetch(`${base}/api/bookings/${bId}/reschedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({ slot: 'Aaj 6 se 8 PM' })
+    });
+    assert.equal(reschedRes.status, 200);
+    const reschedData = await reschedRes.json();
+    assert.equal(reschedData.success, true);
+    assert.equal(reschedData.booking.slot, 'Aaj 6 se 8 PM');
+
+    // 3. Worker accepts, heads out, starts with code, quotes, customer approves, worker completes
+    await fetch(`${base}/api/bookings/${bId}/accept`, { method: 'POST', headers: { Authorization: `Bearer ${workerToken}` } });
+    await fetch(`${base}/api/bookings/${bId}/on-the-way`, { method: 'POST', headers: { Authorization: `Bearer ${workerToken}` } });
+    
+    // Reschedule should now fail because worker is on the way
+    const invalidResched = await fetch(`${base}/api/bookings/${bId}/reschedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({ slot: 'Kal subah' })
+    });
+    assert.equal(invalidResched.status, 409);
+
+    // Complete flow
+    await fetch(`${base}/api/bookings/${bId}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({ code: bookData.booking.start_code })
+    });
+    await fetch(`${base}/api/bookings/${bId}/quote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({ parts: 50 })
+    });
+    await fetch(`${base}/api/bookings/${bId}/approve`, { method: 'POST', headers: { Authorization: `Bearer ${custToken}` } });
+    await fetch(`${base}/api/bookings/${bId}/complete`, { method: 'POST', headers: { Authorization: `Bearer ${workerToken}` } });
+    await fetch(`${base}/api/bookings/${bId}/pay`, { method: 'POST', headers: { Authorization: `Bearer ${custToken}` } });
+
+    // 4. Customer submits review
+    const reviewRes = await fetch(`${base}/api/reviews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({
+        booking_id: bId,
+        rating: 5,
+        comment: 'Very professional electrician, solved spark issue in 15 mins!'
+      })
+    });
+    assert.equal(reviewRes.status, 201);
+    const reviewData = await reviewRes.json();
+    assert.equal(reviewData.success, true);
+
+    // 5. Duplicate review blocked
+    const dupReviewRes = await fetch(`${base}/api/reviews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({ booking_id: bId, rating: 4, comment: 'Again' })
+    });
+    assert.equal(dupReviewRes.status, 409);
+
+    // 6. Public service reviews
+    const svcReviewsRes = await fetch(`${base}/api/reviews/service/1`);
+    assert.equal(svcReviewsRes.status, 200);
+    const svcReviewsData = await svcReviewsRes.json();
+    assert.equal(svcReviewsData.success, true);
+    assert.ok(svcReviewsData.reviews.length >= 1);
+    assert.equal(svcReviewsData.reviews[0].rating, 5);
+    assert.equal(svcReviewsData.reviews[0].customer_name, 'Test Customer');
+  } finally {
+    server.close();
+    await db.close();
+  }
+});
+
+

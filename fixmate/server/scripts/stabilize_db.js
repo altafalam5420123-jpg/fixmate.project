@@ -280,3 +280,4 @@ async function stabilizeSchema() {
 }
 
 stabilizeSchema().catch(console.error);
+

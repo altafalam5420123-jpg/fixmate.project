@@ -400,8 +400,13 @@ function createApp(db = openDb()) {
     quoted: 'Quote taiyaar', in_progress: 'Kaam chal raha hai', completed: 'Kaam poora', closed: 'Quote reject, visit fee baaki', cancelled: 'Booking cancel hui'
   };
 
-  const SELECT = `SELECT b.*, s.name AS service, s.cat, s.price, w.name AS worker_name, w.phone AS worker_phone, c.phone AS customer_phone FROM bookings b
-    JOIN services s ON s.id = b.service_id JOIN users c ON c.id = b.customer_id LEFT JOIN users w ON w.id = b.worker_id`;
+  const SELECT = `SELECT b.*, s.name AS service, s.cat, s.price, w.name AS worker_name, w.phone AS worker_phone, c.phone AS customer_phone,
+    r.rating AS customer_rating, r.comment AS customer_comment, r.created_at AS reviewed_at
+    FROM bookings b
+    JOIN services s ON s.id = b.service_id
+    JOIN users c ON c.id = b.customer_id
+    LEFT JOIN users w ON w.id = b.worker_id
+    LEFT JOIN reviews r ON r.booking_id = b.id`;
 
   const view = (b, u) => {
     const { start_code, customer_phone, worker_phone, ...rest } = b;
@@ -442,14 +447,38 @@ function createApp(db = openDb()) {
   };
 
   app.post('/api/bookings', auth('customer'), h(async (req, res) => {
-    const { serviceId, slot, address, pay } = req.body;
-    const s = (await db.queryOne('SELECT id FROM services WHERE id = $1', [+serviceId])) || bad(400, 'Service nahi mili');
+    const { serviceId, slot, address, pay, issue_desc, photo_url, coupon_code, discount_amount, is_emergency } = req.body;
+    const s = (await db.queryOne('SELECT id, price FROM services WHERE id = $1', [+serviceId])) || bad(400, 'Service nahi mili');
     if (!String(slot || '').trim() || !String(address || '').trim()) bad(400, 'Slot aur address zaruri hain');
     if (!['wallet', 'cash', 'razorpay'].includes(pay)) bad(400, 'Payment wallet, cash ya online hona chahiye');
     const code = String(crypto.randomInt(1000, 10000));
+
+    // Optional coupon discount validation
+    let validDiscount = 0;
+    let validCouponCode = null;
+    if (coupon_code) {
+      const cpn = await db.queryOne('SELECT * FROM coupons WHERE UPPER(code) = UPPER($1) AND is_active = 1', [String(coupon_code).trim()]);
+      if (cpn && Number(s.price) >= cpn.min_order_amount) {
+        validCouponCode = cpn.code;
+        if (cpn.discount_type === 'percentage') {
+          validDiscount = Math.round((s.price * cpn.discount_value) / 100);
+          if (cpn.max_discount && validDiscount > cpn.max_discount) validDiscount = cpn.max_discount;
+        } else {
+          validDiscount = Math.min(cpn.discount_value, s.price);
+        }
+      }
+    } else if (Number(discount_amount) > 0) {
+      validDiscount = Number(discount_amount);
+    }
+
+    const desc = issue_desc ? String(issue_desc).trim().slice(0, 500) : null;
+    const photo = photo_url ? String(photo_url).trim().slice(0, 100000) : null;
+    const emergency = is_emergency ? 1 : 0;
+
     const ins = await db.query(
-      'INSERT INTO bookings (customer_id, service_id, slot, address, pay, start_code) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-      [req.user.id, s.id, String(slot).slice(0, 60), String(address).slice(0, 200), pay, code]
+      `INSERT INTO bookings (customer_id, service_id, slot, address, pay, start_code, issue_desc, photo_url, coupon_code, discount_amount, is_emergency)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      [req.user.id, s.id, String(slot).slice(0, 60), String(address).slice(0, 200), pay, code, desc, photo, validCouponCode, validDiscount, emergency]
     );
     const id = ins.rows[0].id;
     ok(res, { booking: view(await load(id), req.user) }, 201);
@@ -514,6 +543,83 @@ function createApp(db = openDb()) {
     }
     await move(b, b.status, 'cancelled', {}, req.user ? req.user.id : null);
     ok(res, { booking: view(await load(b.id), req.user), message: 'Booking cancel kar di gayi' });
+  }));
+
+  app.post('/api/bookings/:id/reschedule', auth('customer'), h(async (req, res) => {
+    const { slot } = req.body;
+    if (!slot || !String(slot).trim()) bad(400, 'Naya time slot chunein');
+    const b = await load(req.params.id);
+    mine(b, req.user);
+    if (!['requested', 'assigned'].includes(b.status)) {
+      bad(409, 'Worker ke nikalne ke baad slot reschedule nahi ho sakta');
+    }
+    const cleanSlot = String(slot).trim().slice(0, 60);
+    await db.query('UPDATE bookings SET slot = $1 WHERE id = $2', [cleanSlot, b.id]);
+    try {
+      await db.query(
+        'INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by_user_id, notes) VALUES ($1, $2, $3, $4, $5)',
+        [b.id, b.status, b.status, req.user.id, 'Rescheduled to: ' + cleanSlot]
+      );
+    } catch {}
+    ok(res, { booking: view(await load(b.id), req.user), message: 'Booking time slot update ho gaya' });
+  }));
+
+  app.post('/api/reviews', auth('customer'), h(async (req, res) => {
+    const { booking_id, rating, comment } = req.body;
+    const bId = Number(booking_id);
+    if (!bId) bad(400, 'Booking ID required hai');
+    const rVal = Number(rating);
+    if (!Number.isFinite(rVal) || rVal < 1 || rVal > 5) bad(400, 'Rating 1 se 5 ke beech honi chahiye');
+
+    const b = await load(bId);
+    mine(b, req.user);
+    if (b.status !== 'completed' && b.status !== 'closed') {
+      bad(409, 'Sirf poore huye kaam par review de sakte hain');
+    }
+
+    const existing = await db.queryOne('SELECT id FROM reviews WHERE booking_id = $1', [b.id]);
+    if (existing) bad(409, 'Aap is booking par pehle hi review de chuke hain');
+
+    const cleanComment = comment ? String(comment).trim().slice(0, 500) : null;
+    const ins = await db.query(
+      `INSERT INTO reviews (booking_id, customer_id, worker_id, rating, comment)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [b.id, req.user.id, b.worker_id || null, rVal, cleanComment]
+    );
+
+    // Recalculate average rating for service
+    try {
+      const avgRes = await db.queryOne(
+        `SELECT ROUND(AVG(r.rating)::numeric, 1) AS avg_rating
+         FROM reviews r
+         JOIN bookings bk ON bk.id = r.booking_id
+         WHERE bk.service_id = $1`,
+        [b.service_id]
+      );
+      if (avgRes && avgRes.avg_rating) {
+        await db.query('UPDATE services SET rating = $1 WHERE id = $2', [avgRes.avg_rating, b.service_id]);
+      }
+    } catch {}
+
+    ok(res, { message: 'Review submit ho gaya. Shukriya!', review_id: ins.rows[0].id }, 201);
+  }));
+
+  app.get('/api/reviews/service/:id', h(async (req, res) => {
+    const sId = Number(req.params.id);
+    try {
+      const result = await db.query(
+        `SELECT r.id, r.rating, r.comment, r.created_at, u.name AS customer_name
+         FROM reviews r
+         JOIN bookings b ON b.id = r.booking_id
+         JOIN users u ON u.id = r.customer_id
+         WHERE b.service_id = $1
+         ORDER BY r.id DESC LIMIT 20`,
+        [sId]
+      );
+      ok(res, { reviews: result.rows });
+    } catch {
+      ok(res, { reviews: [] });
+    }
   }));
 
   app.post('/api/bookings/:id/pay', auth('customer'), h(async (req, res) => {

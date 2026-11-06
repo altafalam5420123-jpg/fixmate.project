@@ -124,6 +124,71 @@ CREATE INDEX IF NOT EXISTS wallet_tx_user_idx ON wallet_tx(user_id, id DESC);
 CREATE INDEX IF NOT EXISTS otp_rate_limits_updated_idx ON otp_rate_limits(updated_at);
 CREATE INDEX IF NOT EXISTS payment_orders_booking_idx ON payment_orders(booking_id, id DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS payment_orders_active_booking_idx ON payment_orders(booking_id) WHERE status IN ('creating', 'created');
+
+-- Phase 1 & 2 Extended Tables
+CREATE TABLE IF NOT EXISTS categories (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL UNIQUE,
+  slug VARCHAR(100) NOT NULL UNIQUE,
+  icon VARCHAR(50),
+  description TEXT,
+  is_active SMALLINT NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS addresses (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label VARCHAR(50) NOT NULL DEFAULT 'Home',
+  address_line TEXT NOT NULL,
+  landmark VARCHAR(150),
+  city VARCHAR(100) NOT NULL DEFAULT 'Dhanbad',
+  pincode VARCHAR(10) NOT NULL DEFAULT '826001',
+  lat NUMERIC(10, 7),
+  lng NUMERIC(10, 7),
+  is_default SMALLINT NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS addresses_user_idx ON addresses(user_id, is_default DESC);
+
+CREATE TABLE IF NOT EXISTS coupons (
+  id SERIAL PRIMARY KEY,
+  code VARCHAR(30) NOT NULL UNIQUE,
+  title VARCHAR(150) NOT NULL,
+  discount_type VARCHAR(20) NOT NULL CHECK (discount_type IN ('percentage', 'flat')),
+  discount_value INTEGER NOT NULL CHECK (discount_value > 0),
+  min_order_amount INTEGER NOT NULL DEFAULT 0 CHECK (min_order_amount >= 0),
+  max_discount INTEGER CHECK (max_discount IS NULL OR max_discount > 0),
+  usage_limit INTEGER DEFAULT 100,
+  times_used INTEGER NOT NULL DEFAULT 0,
+  valid_until TIMESTAMPTZ,
+  is_active SMALLINT NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS reviews (
+  id SERIAL PRIMARY KEY,
+  booking_id INTEGER NOT NULL UNIQUE REFERENCES bookings(id) ON DELETE CASCADE,
+  customer_id INTEGER NOT NULL REFERENCES users(id),
+  worker_id INTEGER REFERENCES users(id),
+  rating NUMERIC(2, 1) NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  comment TEXT,
+  photos TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS reviews_worker_idx ON reviews(worker_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS booking_status_history (
+  id SERIAL PRIMARY KEY,
+  booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+  old_status VARCHAR(30),
+  new_status VARCHAR(30) NOT NULL,
+  changed_by_user_id INTEGER REFERENCES users(id),
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS bsh_booking_idx ON booking_status_history(booking_id, id DESC);
 `;
 
 function getPoolConfig(customConfig = {}) {
@@ -207,6 +272,67 @@ function openMemoryDb() {
       parts INTEGER NOT NULL DEFAULT 0 CHECK (parts >= 0),
       total INTEGER NOT NULL DEFAULT 0 CHECK (total >= 0),
       paid INTEGER NOT NULL DEFAULT 0 CHECK (paid IN (0, 1)),
+      issue_desc TEXT,
+      photo_url TEXT,
+      coupon_code TEXT,
+      discount_amount INTEGER DEFAULT 0,
+      is_emergency INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      slug TEXT NOT NULL UNIQUE,
+      icon TEXT,
+      description TEXT,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE addresses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      label TEXT NOT NULL DEFAULT 'Home',
+      address_line TEXT NOT NULL,
+      landmark TEXT,
+      city TEXT NOT NULL DEFAULT 'Dhanbad',
+      pincode TEXT NOT NULL DEFAULT '826001',
+      lat REAL,
+      lng REAL,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE coupons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      discount_type TEXT NOT NULL,
+      discount_value INTEGER NOT NULL,
+      min_order_amount INTEGER NOT NULL DEFAULT 0,
+      max_discount INTEGER,
+      usage_limit INTEGER DEFAULT 100,
+      times_used INTEGER NOT NULL DEFAULT 0,
+      valid_until TEXT,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      booking_id INTEGER NOT NULL UNIQUE REFERENCES bookings(id),
+      customer_id INTEGER NOT NULL REFERENCES users(id),
+      worker_id INTEGER REFERENCES users(id),
+      rating REAL NOT NULL CHECK (rating >= 1 AND rating <= 5),
+      comment TEXT,
+      photos TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE booking_status_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      booking_id INTEGER NOT NULL REFERENCES bookings(id),
+      old_status TEXT,
+      new_status TEXT NOT NULL,
+      changed_by_user_id INTEGER REFERENCES users(id),
+      notes TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE wallet_tx (
@@ -380,6 +506,19 @@ function openDb(config = {}) {
     async initDb() {
       try {
         await this.query(SCHEMA_SQL);
+
+        // Additive non-breaking Phase 2 booking columns
+        try {
+          await this.query(`
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS issue_desc TEXT;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS photo_url TEXT;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS coupon_code VARCHAR(30);
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS discount_amount INTEGER DEFAULT 0;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_emergency SMALLINT DEFAULT 0;
+          `);
+        } catch (colErr) {
+          console.warn('[PostgreSQL Init Notice] Column migration:', colErr.message);
+        }
 
         // Check if services are seeded
         const serviceCount = await this.queryOne('SELECT COUNT(*) AS c FROM services');
