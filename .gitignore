@@ -1,0 +1,10 @@
+.env
+**/.env
+node_modules/
+**/node_modules/
+*.sqlite
+**/*.sqlite
+*.apk
+**/*.apk
+.gradle/
+**/build/
