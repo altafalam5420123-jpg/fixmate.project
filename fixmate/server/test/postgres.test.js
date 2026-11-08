@@ -663,6 +663,144 @@ test('Phase 4 Admin Dashboard: Analytics, Verification, Assignment, Pricing, and
   }
 });
 
+test('Phase 5 Transparent Pricing & Digital Invoices: Parts Breakdown, Customer Quote Approval, and Tax Receipts', async () => {
+  const jwt = require('jsonwebtoken');
+  const { createApp } = require('../src/app');
+  const db = openDb(':memory:');
+  await db.initDb();
+
+  const custId = db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet) VALUES ('9222222221', 'P5 Customer', 'customer', null, 5000)").run().lastInsertRowid;
+  const otherCustId = db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet) VALUES ('9222222220', 'Stranger Customer', 'customer', null, 2000)").run().lastInsertRowid;
+  const workerId = db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet, online, id_verified) VALUES ('9222222223', 'P5 AC Tech', 'worker', 'AC Repair', 0, 1, 1)").run().lastInsertRowid;
+  const adminId = db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet) VALUES ('9222222224', 'P5 Admin', 'admin', null, 10000)").run().lastInsertRowid;
+
+  const custToken = jwt.sign({ id: Number(custId), tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+  const strangerToken = jwt.sign({ id: Number(otherCustId), tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+  const workerToken = jwt.sign({ id: Number(workerId), tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+  const adminToken = jwt.sign({ id: Number(adminId), tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+
+  const server = createApp(db).listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://localhost:${server.address().port}`;
+
+  try {
+    // 1. Customer creates AC repair booking (Service ID 7: Split AC service, ₹499)
+    const bookRes = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({
+        serviceId: 7,
+        slot: 'Kal 10 se 12 AM',
+        address: 'Sector 4, Bokaro / Dhanbad Road',
+        pay: 'wallet',
+        issue_desc: 'Cooling kam hai aur fan se noise aa rahi hai'
+      })
+    });
+    const bookData = await bookRes.json();
+    const bId = bookData.booking.id;
+    assert.equal(bookData.booking.status, 'requested');
+
+    // 2. Worker accepts, travels, and starts inspection
+    await fetch(`${base}/api/bookings/${bId}/accept`, { method: 'POST', headers: { Authorization: `Bearer ${workerToken}` } });
+    await fetch(`${base}/api/bookings/${bId}/on-the-way`, { method: 'POST', headers: { Authorization: `Bearer ${workerToken}` } });
+    await fetch(`${base}/api/bookings/${bId}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({ code: bookData.booking.start_code })
+    });
+
+    // 3. Worker inspects and submits transparent quote with spare parts description
+    const quoteRes = await fetch(`${base}/api/bookings/${bId}/quote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({
+        parts: 450,
+        parts_desc: '45uF Heavy Duty Run Capacitor replaced'
+      })
+    });
+    assert.equal(quoteRes.status, 200);
+    const quoteData = await quoteRes.json();
+    assert.equal(quoteData.booking.status, 'quoted');
+    assert.equal(quoteData.booking.parts, 450);
+    assert.equal(quoteData.booking.total, 499 + 450);
+
+    // 4. Customer approves the quote
+    const approveRes = await fetch(`${base}/api/bookings/${bId}/approve`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${custToken}` }
+    });
+    assert.equal(approveRes.status, 200);
+    const approveData = await approveRes.json();
+    assert.equal(approveData.booking.status, 'in_progress');
+
+    // 5. Worker completes job
+    const compRes = await fetch(`${base}/api/bookings/${bId}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({ complete_photo_url: 'data:image/jpeg;base64,acFixedProof' })
+    });
+    assert.equal(compRes.status, 200);
+
+    // 6. Customer pays via wallet
+    const payRes = await fetch(`${base}/api/bookings/${bId}/pay`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${custToken}` }
+    });
+    assert.equal(payRes.status, 200);
+
+    // 7. Digital Invoice JSON API Verification
+    const invRes = await fetch(`${base}/api/bookings/${bId}/invoice`, {
+      headers: { Authorization: `Bearer ${custToken}` }
+    });
+    assert.equal(invRes.status, 200);
+    const invData = await invRes.json();
+    assert.equal(invData.success, true);
+    assert.ok(invData.invoice.invoice_number.startsWith('INV-'));
+    assert.equal(invData.invoice.total, 499 + 450);
+    assert.equal(invData.invoice.paid, true);
+    assert.equal(invData.invoice.payment_method, 'wallet');
+    assert.ok(invData.invoice.items.length >= 2);
+    assert.equal(invData.invoice.warranty.service_warranty_days, 30);
+    assert.equal(invData.invoice.warranty.parts_warranty_days, 90);
+    assert.ok(invData.invoice.gst.cgst_amount > 0);
+    assert.ok(invData.invoice.gst.sgst_amount > 0);
+
+    // Worker can also view invoice
+    const workerInvRes = await fetch(`${base}/api/bookings/${bId}/invoice`, {
+      headers: { Authorization: `Bearer ${workerToken}` }
+    });
+    assert.equal(workerInvRes.status, 200);
+
+    // Admin can also view invoice
+    const adminInvRes = await fetch(`${base}/api/bookings/${bId}/invoice`, {
+      headers: { Authorization: `Bearer ${adminToken}` }
+    });
+    assert.equal(adminInvRes.status, 200);
+
+    // Stranger customer is blocked from viewing this invoice
+    const strangerInvRes = await fetch(`${base}/api/bookings/${bId}/invoice`, {
+      headers: { Authorization: `Bearer ${strangerToken}` }
+    });
+    assert.equal(strangerInvRes.status, 403);
+
+    // 8. Printable HTML Tax Invoice Endpoint Verification
+    const htmlRes = await fetch(`${base}/api/bookings/${bId}/invoice/html`, {
+      headers: { Authorization: `Bearer ${custToken}` }
+    });
+    assert.equal(htmlRes.status, 200);
+    assert.ok(htmlRes.headers.get('content-type').includes('text/html'));
+    const htmlText = await htmlRes.text();
+    assert.ok(htmlText.includes('TAX INVOICE'));
+    assert.ok(htmlText.includes('Fix<span>Mate</span>'));
+    assert.ok(htmlText.includes(invData.invoice.invoice_number));
+    assert.ok(htmlText.includes('30-Day FixMate Guarantee Certificate'));
+    assert.ok(htmlText.includes('45uF Heavy Duty Run Capacitor'));
+  } finally {
+    server.close();
+    await db.close();
+  }
+});
+
 
 
 

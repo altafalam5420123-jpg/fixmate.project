@@ -299,6 +299,9 @@ function openMemoryDb() {
       is_emergency INTEGER DEFAULT 0,
       start_photo_url TEXT,
       complete_photo_url TEXT,
+      parts_desc TEXT,
+      warranty_days INTEGER DEFAULT 30,
+      completed_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE categories (
@@ -552,6 +555,9 @@ function openDb(config = {}) {
             ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_emergency SMALLINT DEFAULT 0;
             ALTER TABLE bookings ADD COLUMN IF NOT EXISTS start_photo_url TEXT;
             ALTER TABLE bookings ADD COLUMN IF NOT EXISTS complete_photo_url TEXT;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS parts_desc TEXT;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS warranty_days INTEGER DEFAULT 30;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
 
             ALTER TABLE users ADD COLUMN IF NOT EXISTS experience_years INTEGER DEFAULT 2;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS id_document_url TEXT;

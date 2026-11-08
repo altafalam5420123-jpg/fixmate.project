@@ -123,7 +123,7 @@ function createApp(db = openDb()) {
 
   const auth = (...roles) => async (req, res, next) => {
     try {
-      const token = (req.headers.authorization || '').replace(/^Bearer /, '');
+      const token = (req.headers.authorization || '').replace(/^Bearer /, '') || (req.query && typeof req.query.token === 'string' ? req.query.token : '');
       const p = jwt.verify(token, secret);
       const u = await db.queryOne('SELECT * FROM users WHERE id = $1', [p.id]);
       if (!u) return bad(401, 'Login karo');
@@ -138,7 +138,7 @@ function createApp(db = openDb()) {
 
   const authOptional = async (req, res, next) => {
     try {
-      const token = (req.headers.authorization || '').replace(/^Bearer /, '');
+      const token = (req.headers.authorization || '').replace(/^Bearer /, '') || (req.query && typeof req.query.token === 'string' ? req.query.token : '');
       if (!token) return next();
       const p = jwt.verify(token, secret);
       const u = await db.queryOne('SELECT * FROM users WHERE id = $1', [p.id]);
@@ -493,7 +493,9 @@ function createApp(db = openDb()) {
     quoted: 'Quote taiyaar', in_progress: 'Kaam chal raha hai', completed: 'Kaam poora', closed: 'Quote reject, visit fee baaki', cancelled: 'Booking cancel hui'
   };
 
-  const SELECT = `SELECT b.*, s.name AS service, s.cat, s.price, w.name AS worker_name, w.phone AS worker_phone, c.phone AS customer_phone,
+  const SELECT = `SELECT b.*, s.name AS service, s.cat, s.price,
+    c.name AS customer_name, c.phone AS customer_phone,
+    w.name AS worker_name, w.phone AS worker_phone, w.skill AS worker_skill, w.id_verified AS worker_verified,
     r.rating AS customer_rating, r.comment AS customer_comment, r.created_at AS reviewed_at
     FROM bookings b
     JOIN services s ON s.id = b.service_id
@@ -623,14 +625,20 @@ function createApp(db = openDb()) {
     const parts = Number(req.body.parts ?? 0);
     if (!Number.isInteger(parts) || parts < 0 || parts > 20000) bad(400, 'Parts ka amount 0 se 20000 ke beech ho');
     if (b.cat === 'Home Tutor' && parts) bad(400, 'Tutor ke quote mein parts nahi hote');
-    return { setFields: { parts, total: b.price + parts } };
+    const parts_desc = req.body.parts_desc ? String(req.body.parts_desc).trim().slice(0, 300) : null;
+    const discount = Number(b.discount_amount || 0);
+    const subtotal = b.price + parts;
+    const total = Math.max(0, subtotal - discount);
+    return { setFields: { parts, parts_desc, total } };
   });
 
   step('approve', 'customer', 'quoted', 'in_progress');
   step('reject', 'customer', 'quoted', 'closed', () => ({ setFields: { total: VISIT_FEE } }));
   step('complete', 'worker', 'in_progress', 'completed', (b, req) => {
     const photo = req.body.complete_photo_url ? String(req.body.complete_photo_url).trim().slice(0, 100000) : null;
-    return photo ? { setFields: { complete_photo_url: photo } } : {};
+    const setFields = { completed_at: new Date().toISOString() };
+    if (photo) setFields.complete_photo_url = photo;
+    return { setFields };
   });
 
   app.post('/api/bookings/:id/cancel', auth('customer'), h(async (req, res) => {
@@ -847,6 +855,287 @@ function createApp(db = openDb()) {
     });
 
     ok(res, { booking: view(await load(b.id), req.user), message: 'Online payment verify ho gaya' });
+  }));
+
+  // ---------- Digital Invoices & Tax Receipts (Phase 5) ----------
+  const canAccessInvoice = (b, u) => {
+    if (!u) return false;
+    if (u.role === 'admin') return true;
+    if (u.id === b.customer_id) return true;
+    if (u.id === b.worker_id) return true;
+    return false;
+  };
+
+  function buildInvoiceData(b) {
+    const isClosed = b.status === 'closed';
+    const invoiceNo = `INV-${String(b.id).padStart(5, '0')}`;
+    const dateObj = new Date(b.completed_at || b.created_at || Date.now());
+    const dateStr = dateObj.toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric'
+    });
+
+    const items = [];
+    if (isClosed) {
+      items.push({
+        title: 'Inspection & Visiting Fee (Quote rejected)',
+        qty: 1,
+        rate: VISIT_FEE,
+        amount: VISIT_FEE
+      });
+    } else {
+      items.push({
+        title: `${b.service} (Base Labor & Service Charge)`,
+        qty: 1,
+        rate: b.price,
+        amount: b.price
+      });
+      items.push({
+        title: 'Inspection & Visiting Fee',
+        qty: 1,
+        rate: VISIT_FEE,
+        amount: 0,
+        note: '100% Free with Service (Waived)'
+      });
+      if (b.parts && b.parts > 0) {
+        items.push({
+          title: `Genuine Spare Parts: ${b.parts_desc || 'Replacement parts'}`,
+          qty: 1,
+          rate: b.parts,
+          amount: b.parts
+        });
+      }
+      if (b.is_emergency) {
+        items.push({
+          title: 'Priority Emergency Dispatch (Within 60 mins)',
+          qty: 1,
+          rate: 0,
+          amount: 0,
+          note: 'Complimentary Priority'
+        });
+      }
+      if (b.discount_amount && b.discount_amount > 0) {
+        items.push({
+          title: `Special Promo Discount (${b.coupon_code || 'Offer'})`,
+          qty: 1,
+          rate: -b.discount_amount,
+          amount: -b.discount_amount
+        });
+      }
+    }
+
+    const subtotal = isClosed ? VISIT_FEE : (b.price + (b.parts || 0));
+    const discount = isClosed ? 0 : (b.discount_amount || 0);
+    const finalPayable = isClosed ? VISIT_FEE : Math.max(0, subtotal - discount);
+
+    // 18% GST calculation (included in total or itemized: 9% CGST + 9% SGST)
+    const taxableAmount = Math.round((finalPayable / 1.18) * 100) / 100;
+    const totalGst = Math.round((finalPayable - taxableAmount) * 100) / 100;
+    const cgst = Math.round((totalGst / 2) * 100) / 100;
+    const sgst = Math.round((totalGst / 2) * 100) / 100;
+
+    const warrantyDays = isClosed ? 0 : (b.warranty_days || 30);
+    const warrantyExpiry = new Date(Date.now() + warrantyDays * 24 * 60 * 60 * 1000).toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric'
+    });
+
+    return {
+      invoice_number: invoiceNo,
+      date: dateStr,
+      status: b.status,
+      paid: Boolean(b.paid),
+      payment_method: b.pay,
+      customer: {
+        id: b.customer_id,
+        name: b.customer_name || 'FixMate Customer',
+        phone: b.customer_phone || '9XXXXXXXXX',
+        address: b.address
+      },
+      technician: b.worker_id ? {
+        id: b.worker_id,
+        name: b.worker_name || 'Verified Technician',
+        phone: b.worker_phone || '',
+        skill: b.worker_skill || b.cat,
+        verified: Boolean(b.worker_verified)
+      } : null,
+      service: {
+        name: b.service,
+        category: b.cat,
+        slot: b.slot
+      },
+      items,
+      subtotal,
+      discount,
+      gst: {
+        rate: '18%',
+        cgst_rate: '9%',
+        cgst_amount: cgst,
+        sgst_rate: '9%',
+        sgst_amount: sgst,
+        total_tax: totalGst,
+        taxable_value: taxableAmount
+      },
+      total: finalPayable,
+      warranty: isClosed ? null : {
+        service_warranty_days: warrantyDays,
+        parts_warranty_days: (b.parts && b.parts > 0) ? 90 : 0,
+        valid_until: warrantyExpiry,
+        terms: '30 din ki free rework warranty labor par lagu hai. Genuine spare parts par 90 din replacement guarantee.'
+      }
+    };
+  }
+
+  app.get('/api/bookings/:id/invoice', auth(), h(async (req, res) => {
+    const b = await load(req.params.id);
+    if (!canAccessInvoice(b, req.user)) bad(403, 'Aapko is invoice ko dekhne ki anumati nahi hai');
+    const invoice = buildInvoiceData(b);
+    ok(res, { invoice });
+  }));
+
+  app.get('/api/bookings/:id/invoice/html', auth(), h(async (req, res) => {
+    const b = await load(req.params.id);
+    if (!canAccessInvoice(b, req.user)) bad(403, 'Aapko is invoice ko dekhne ki anumati nahi hai');
+    const inv = buildInvoiceData(b);
+
+    const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FixMate Invoice ${inv.invoice_number}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #0F2537; background: #f8fafc; padding: 24px 16px; }
+  .invoice-box { max-width: 720px; margin: 0 auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 32px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #006A60; padding-bottom: 20px; margin-bottom: 24px; }
+  .logo { font-size: 26px; font-weight: 800; color: #006A60; letter-spacing: -0.5px; }
+  .logo span { color: #FA6A00; }
+  .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+  .badge.paid { background: #E6F4EA; color: #1E824C; }
+  .badge.unpaid { background: #FEF3C7; color: #D97706; }
+  .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; font-size: 13.5px; line-height: 1.5; }
+  .details-col b { color: #006A60; display: block; margin-bottom: 4px; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13.5px; }
+  th { background: #F0F4F8; color: #0F2537; text-align: left; padding: 10px 12px; font-weight: 700; border-top: 1px solid #CBD5E1; border-bottom: 1px solid #CBD5E1; }
+  td { padding: 12px; border-bottom: 1px solid #E2EBF0; }
+  .text-right { text-align: right; }
+  .summary { margin-left: auto; width: 280px; margin-bottom: 24px; font-size: 13.5px; }
+  .summary-row { display: flex; justify-content: space-between; padding: 6px 0; }
+  .summary-row.total { border-top: 2px solid #0F2537; font-size: 17px; font-weight: 800; color: #006A60; padding-top: 10px; margin-top: 6px; }
+  .warranty-box { background: #E2EFEF; border: 1.5px solid #006A60; border-radius: 12px; padding: 14px 18px; margin-bottom: 24px; }
+  .warranty-box b { color: #004D40; font-size: 14px; display: block; margin-bottom: 4px; }
+  .warranty-box p { font-size: 12.5px; color: #334E68; }
+  .footer { text-align: center; border-top: 1px solid #E2EBF0; padding-top: 18px; font-size: 12px; color: #627D98; }
+  .print-btn { display: inline-flex; align-items: gap: 8px; background: #006A60; color: #fff; font-weight: 700; padding: 10px 20px; border-radius: 10px; text-decoration: none; border: none; cursor: pointer; margin-bottom: 20px; font-size: 14px; }
+  .print-btn:hover { background: #004D40; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .invoice-box { border: none; box-shadow: none; padding: 0; }
+    .no-print { display: none !important; }
+  }
+</style>
+</head>
+<body>
+  <div style="max-width:720px; margin:0 auto;" class="no-print">
+    <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF Receipt</button>
+  </div>
+  <div class="invoice-box">
+    <div class="header">
+      <div>
+        <div class="logo">Fix<span>Mate</span></div>
+        <div style="font-size:12px; color:#627D98; margin-top:4px;">GSTIN: 20AAACF1234F1Z5 · Dhanbad, Jharkhand</div>
+        <div style="font-size:12px; color:#627D98;">support@fixmate.in · Helpline: +91 9999999999</div>
+      </div>
+      <div style="text-align:right;">
+        <h2 style="font-size:20px; font-weight:800; color:#0F2537; margin-bottom:4px;">TAX INVOICE</h2>
+        <div style="font-size:14px; font-weight:700; color:#006A60;">${inv.invoice_number}</div>
+        <div style="font-size:12px; color:#627D98; margin:4px 0 8px;">Date: ${inv.date}</div>
+        <span class="badge ${inv.paid ? 'paid' : 'unpaid'}">${inv.paid ? 'PAID' : 'PAYMENT PENDING'}</span>
+      </div>
+    </div>
+
+    <div class="details-grid">
+      <div class="details-col">
+        <b>Billed To (Customer):</b>
+        <div>${inv.customer.name}</div>
+        <div>Phone: ${inv.customer.phone}</div>
+        <div>Address: ${inv.customer.address}</div>
+      </div>
+      <div class="details-col">
+        <b>Service & Technician Details:</b>
+        <div>Service: ${inv.service.name} (${inv.service.category})</div>
+        ${inv.technician ? `
+          <div>Technician: ${inv.technician.name} ${inv.technician.verified ? '🛡️ (Verified Pro)' : ''}</div>
+          <div>Contact: ${inv.technician.phone}</div>
+        ` : '<div>Technician: FixMate Team</div>'}
+        <div>Payment Mode: <span style="text-transform:capitalize;">${inv.payment_method}</span></div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Description</th>
+          <th class="text-right">Qty</th>
+          <th class="text-right">Rate</th>
+          <th class="text-right">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${inv.items.map((it, idx) => `
+          <tr>
+            <td>${idx + 1}</td>
+            <td>
+              <b>${it.title}</b>
+              ${it.note ? `<div style="font-size:11px; color:#1E824C;">${it.note}</div>` : ''}
+            </td>
+            <td class="text-right">${it.qty}</td>
+            <td class="text-right">${it.rate < 0 ? '-' : ''}₹${Math.abs(it.rate)}</td>
+            <td class="text-right"><b>${it.amount < 0 ? '-' : ''}₹${Math.abs(it.amount)}</b></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    <div class="summary">
+      <div class="summary-row">
+        <span>Subtotal</span>
+        <span>₹${inv.subtotal}</span>
+      </div>
+      ${inv.discount ? `
+        <div class="summary-row" style="color:#1E824C; font-weight:700;">
+          <span>Promo Discount</span>
+          <span>-₹${inv.discount}</span>
+        </div>
+      ` : ''}
+      <div class="summary-row" style="font-size:12px; color:#627D98;">
+        <span>Includes GST 18% (CGST 9% + SGST 9%)</span>
+        <span>₹${inv.gst.total_tax}</span>
+      </div>
+      <div class="summary-row total">
+        <span>Final Payable</span>
+        <span>₹${inv.total}</span>
+      </div>
+    </div>
+
+    ${inv.warranty ? `
+      <div class="warranty-box">
+        <b>🛡️ 30-Day FixMate Guarantee Certificate</b>
+        <p>${inv.warranty.terms}</p>
+        <div style="font-size:12px; margin-top:6px; font-weight:700; color:#006A60;">Warranty Valid Till: ${inv.warranty.valid_until}</div>
+      </div>
+    ` : ''}
+
+    <div class="footer">
+      <div>This is a computer-generated tax invoice and requires no physical signature.</div>
+      <div style="margin-top:4px;">Thank you for choosing FixMate Dhanbad! Safe · Reliable · Verified Home Services.</div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
   }));
 
   // ---------- Wallet ----------

@@ -816,16 +816,21 @@ function bkc(b) {
 
     <!-- Quote details -->
     ${b.status === 'quoted' ? `
-      <div class="card" style="border-color:var(--pri);margin:10px 0 0">
-        <b>Inspection Quote</b>
-        <div class="row mut"><span>Service charge</span><span>${inr(b.price)}</span></div>
-        ${b.parts ? `<div class="row mut"><span>Genuine spare parts</span><span>${inr(b.parts)}</span></div>` : ''}
+      <div class="card" style="border-color:var(--teal);background:rgba(0,106,96,0.03);margin:10px 0 0">
+        <div style="font-weight:800;font-size:14px;color:var(--teal)">📋 Inspection Quote & Parts Breakdown</div>
+        <div class="row mut" style="margin-top:6px"><span>Service Base Labor</span><span>${inr(b.price)}</span></div>
+        <div class="row mut"><span>Inspection / Visiting Fee</span><span>₹99 <small style="color:var(--ok)">(Waived on approval)</small></span></div>
+        ${b.parts ? `<div class="row mut"><span>Genuine spare parts: <b>${esc(b.parts_desc || 'Replacement parts')}</b></span><span>${inr(b.parts)}</span></div>` : ''}
+        ${b.discount_amount ? `<div class="row" style="color:var(--ok)"><span>Promo Discount</span><span>-${inr(b.discount_amount)}</span></div>` : ''}
         <div class="row" style="border-top:1px dashed var(--bd);padding-top:6px;margin-top:6px">
-          <b>Total Payable</b><b>${inr(b.total)}</b>
+          <b>Total Payable Estimate</b><b style="color:var(--teal);font-size:16px">${inr(b.total)}</b>
+        </div>
+        <div class="mut" style="font-size:11.5px;margin:8px 0 10px;line-height:1.4">
+          🛡️ <b>Transparent Price Guarantee:</b> Bina aapki manzoori ke technician kaam shuru nahi karega. Manzoor karne par 30 din ki warranty lagu hogi. Agar aap quote reject karte hain to sirf ₹99 visiting fee lagegi.
         </div>
         <div class="row" style="margin-top:10px">
-          <button class="btn sm" onclick="post(${b.id},'approve',null,'Quote manzoor kiya')">Manzoor hai</button>
-          <button class="btn sm ghost" onclick="post(${b.id},'reject',null,'Sirf visit fee lagegi')">Nahi chahiye</button>
+          <button class="btn sm" onclick="post(${b.id},'approve',null,'Quote manzoor kiya! Kaam shuru ho raha hai.')">✅ Manzoor hai (Approve)</button>
+          <button class="btn sm ghost" onclick="post(${b.id},'reject',null,'Sirf visit fee lagegi')">❌ Reject Quote (Only ₹99 Visit Fee)</button>
         </div>
       </div>
     ` : ''}
@@ -856,6 +861,15 @@ function bkc(b) {
         <div class="mut" style="margin-top:6px;font-size:12px">
           ${cx ? 'Sirf visit fee li gayi.' : '✅ 30 din ki warranty active hai.'}
         </div>
+      </div>
+    ` : ''}
+
+    <!-- Digital Invoice & Receipt Button -->
+    ${(b.status === 'completed' || b.status === 'closed') ? `
+      <div class="row" style="margin-top:10px">
+        <button class="btn sm ghost" style="width:100%;font-weight:700;color:var(--teal);border-color:var(--teal)" onclick="openInvoiceModal(${b.id})">
+          📄 View Digital Invoice & 30-Day Warranty
+        </button>
       </div>
     ` : ''}
 
@@ -1141,7 +1155,8 @@ function wcard(b) {
         <div style="font-weight:700;font-size:13px">Inspection Poora: Quote Bhejein</div>
         <div class="mut" style="font-size:12px;margin:4px 0 8px">Service visiting/base fee ${inr(b.price)} jud chuka hai. Spare parts ka kharcha daalein:</div>
         <input id="q${b.id}" type="number" min="0" placeholder="Spare parts ka kharcha (₹), 0 agar koi part nahi" style="margin-bottom:8px">
-        <button class="btn acc" onclick="post(${b.id},'quote',{parts:+$('q${b.id}').value||0},'Quote bhej diya! Customer approval ka intezaar karein.')">
+        <input id="qd${b.id}" type="text" placeholder="Spare parts details (e.g. Capacitor, copper pipe)" style="margin-bottom:8px">
+        <button class="btn acc" onclick="post(${b.id},'quote',{parts:+$('q${b.id}').value||0,parts_desc:($('qd${b.id}')?.value||'').trim()||null},'Quote bhej diya! Customer approval ka intezaar karein.')">
           Quote Bhejo (Customer Approval)
         </button>
       </div>
@@ -1175,6 +1190,9 @@ function wcard(b) {
         <div class="mut" style="font-size:12px;margin-top:2px">
           ${b.paid ? `Aapka hissa ${inr(Math.round(b.total * 0.85))} FixMate wallet mein jud chuka hai.` : `Customer dwara ${inr(b.total)} ka payment pending hai.`}
         </div>
+        <button class="btn sm ghost" style="margin-top:8px;width:100%" onclick="openInvoiceModal(${b.id})">
+          📄 View Job Invoice & Breakdown
+        </button>
       </div>
     ` : ''}
   </div>`;
@@ -1713,6 +1731,92 @@ function renderModal() {
     </div>`;
   }
 
+  if (S.modal === 'invoice') {
+    const inv = S.activeInvoice;
+    if (!inv) return '';
+    return `<div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-sheet invoice-sheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto;padding:20px">
+        <div class="modal-header" style="margin-bottom:12px;display:flex;align-items:flex-start;justify-content:space-between">
+          <div>
+            <h3 style="margin:0;font-size:18px">🧾 ${esc(inv.company.name)}</h3>
+            <div class="mut" style="font-size:11px">Tax Invoice · ${esc(inv.invoice_number)} · GSTIN: ${esc(inv.company.gstin)}</div>
+          </div>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:var(--soft);padding:12px;border-radius:12px;margin-bottom:14px;font-size:12px">
+          <div>
+            <span class="mut" style="font-size:10px;text-transform:uppercase;font-weight:700">Customer Details</span><br>
+            <b>${esc(inv.customer.name)}</b><br>
+            ${esc(inv.customer.phone)}<br>
+            <span class="mut">${esc(inv.service_address)}</span>
+          </div>
+          <div>
+            <span class="mut" style="font-size:10px;text-transform:uppercase;font-weight:700">Service Details</span><br>
+            <b>${esc(inv.service_name)}</b><br>
+            Slot: ${esc(inv.service_slot)}<br>
+            Tech: <b>${esc(inv.technician.name)}</b> ${inv.technician.verified ? '⭐' : ''}
+          </div>
+        </div>
+
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px">Itemized Breakdown</div>
+        <table class="inv-table" style="width:100%;font-size:12px;border-collapse:collapse;margin-bottom:14px">
+          <thead>
+            <tr style="border-bottom:1.5px solid var(--bd);text-align:left;color:var(--mut)">
+              <th style="padding:6px 4px">Item</th>
+              <th style="padding:6px 4px;text-align:right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(inv.line_items || []).map((it) => `
+              <tr style="border-bottom:1px dashed var(--bd)">
+                <td style="padding:8px 4px">
+                  <b>${esc(it.title)}</b>
+                  ${it.description ? `<div class="mut" style="font-size:11px">${esc(it.description)}</div>` : ''}
+                </td>
+                <td style="padding:8px 4px;text-align:right;font-weight:700;color:${it.amount < 0 ? 'var(--ok)' : 'var(--ink)'}">
+                  ${it.amount < 0 ? '-' : ''}${inr(Math.abs(it.amount))}
+                </td>
+              </tr>
+            `).join('')}
+            <tr style="border-top:1.5px solid var(--bd)">
+              <td style="padding:8px 4px">Taxable Subtotal</td>
+              <td style="padding:8px 4px;text-align:right">${inr(inv.subtotal)}</td>
+            </tr>
+            <tr>
+              <td style="padding:4px 4px" class="mut">CGST (9%)</td>
+              <td style="padding:4px 4px;text-align:right" class="mut">${inr(inv.taxes.cgst_amount)}</td>
+            </tr>
+            <tr>
+              <td style="padding:4px 4px" class="mut">SGST (9%)</td>
+              <td style="padding:4px 4px;text-align:right" class="mut">${inr(inv.taxes.sgst_amount)}</td>
+            </tr>
+            <tr style="border-top:2px solid var(--bd);font-size:14px;font-weight:800">
+              <td style="padding:10px 4px">Total Payable</td>
+              <td style="padding:10px 4px;text-align:right;color:var(--sec)">${inr(inv.total_amount)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="card" style="background:rgba(47,158,122,0.08);border:1px solid rgba(47,158,122,0.25);padding:10px 12px;margin-bottom:14px;border-radius:12px">
+          <div style="font-weight:700;color:var(--teal);font-size:12px">
+            🛡️ ${inv.warranty.coverage}
+          </div>
+          <div class="mut" style="font-size:11px;margin-top:2px">
+            Valid until <b>${new Date(inv.warranty.valid_until).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</b>. ${inv.warranty.terms}
+          </div>
+        </div>
+
+        <div class="row" style="gap:10px">
+          <button class="btn acc" style="flex:1" onclick="downloadPdfInvoice(${inv.booking_id})">
+            🖨️ Download / Print Tax Invoice
+          </button>
+          <button class="btn ghost" style="width:auto;padding:12px 18px" onclick="closeModal()">Band Karein</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
   return '';
 }
 
@@ -1914,6 +2018,35 @@ function submitAdminResolve() {
 }
 
 /* ========================================================
+   PHASE 5: DIGITAL INVOICES & PDF RECEIPTS
+   ======================================================== */
+async function openInvoiceModal(bookingId) {
+  try {
+    toast('Invoice load ho raha hai...');
+    const res = await api('GET', `/bookings/${bookingId}/invoice`);
+    if (res && res.invoice) {
+      S.activeInvoice = res.invoice;
+      S.modal = 'invoice';
+      render();
+    } else {
+      toast(res?.error || 'Invoice load nahi ho saka');
+    }
+  } catch (err) {
+    toast(err.message || 'Invoice fetch failed');
+  }
+}
+
+function downloadPdfInvoice(bookingId) {
+  const token = S.token;
+  if (!token) {
+    toast('Pehle login karein');
+    return;
+  }
+  const url = `${API}/bookings/${bookingId}/invoice/html?token=${encodeURIComponent(token)}`;
+  window.open(url, '_blank');
+}
+
+/* ========================================================
    ADMIN DASHBOARD VIEWS
    ======================================================== */
 function adm() {
@@ -2053,6 +2186,9 @@ function admBookings() {
         <div class="row" style="margin-top:10px">
           <button class="btn sm ghost" onclick="openAdminAssignModal(${b.id})">
             ${b.worker_name ? 'Reassign Tech' : '👉 Assign Technician'}
+          </button>
+          <button class="btn sm ghost" onclick="openInvoiceModal(${b.id})">
+            📄 Invoice
           </button>
         </div>
       </div>
