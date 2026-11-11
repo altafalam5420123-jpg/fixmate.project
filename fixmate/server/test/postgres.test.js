@@ -1326,6 +1326,133 @@ test('Phase 8 AMC Plans, Emergency Guardrails, 1-Click Repeat Booking, Warranty 
   }
 });
 
+test('Phase 9 Security Audit, CORS/Permissions, Large Photo Payload & Razorpay Webhook Verification', async () => {
+  const crypto = require('node:crypto');
+  const jwt = require('jsonwebtoken');
+  const { createApp } = require('../src/app');
+  const db = openDb(':memory:');
+  await db.initDb();
+
+  const custId = Number(db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet) VALUES ('9876543001', 'Audit Customer', 'customer', null, 500)").run().lastInsertRowid);
+  const workerId = Number(db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet, online) VALUES ('9876543002', 'Audit Tech', 'worker', 'Electrician', 0, 1)").run().lastInsertRowid);
+  const custToken = jwt.sign({ id: custId, tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+  const workerToken = jwt.sign({ id: workerId, tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+
+  const prevWebhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  delete process.env.RAZORPAY_WEBHOOK_SECRET;
+
+  const server = createApp(db).listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://localhost:${server.address().port}`;
+
+  try {
+    // 1. Health check endpoint & Security Headers
+    const healthRes = await fetch(`${base}/api/health`);
+    assert.equal(healthRes.status, 200);
+    assert.ok(healthRes.headers.get('permissions-policy').includes('geolocation=(self)'));
+    assert.ok(healthRes.headers.get('permissions-policy').includes('camera=(self)'));
+    const healthData = await healthRes.json();
+    assert.equal(healthData.database, 'connected');
+    assert.equal(healthData.integrations.leaflet_osm_tracking, 'ready');
+
+    // 2. CORS preflight allows PUT and DELETE (critical for mobile/cross-origin updates)
+    const preflightRes = await fetch(`${base}/api/addresses/1`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://localhost' }
+    });
+    assert.equal(preflightRes.status, 204);
+    const allowMethods = preflightRes.headers.get('access-control-allow-methods');
+    assert.ok(allowMethods.includes('PUT'));
+    assert.ok(allowMethods.includes('DELETE'));
+
+    // 3. Large photo payload (~45KB base64 image) uploads cleanly without 413 error
+    const bigPhoto = 'data:image/jpeg;base64,' + 'A'.repeat(45000);
+    const bookRes = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({
+        serviceId: 1,
+        slot: 'Abhi (60 min mein)',
+        address: 'Bank More, Dhanbad',
+        pay: 'razorpay',
+        photo_url: bigPhoto
+      })
+    });
+    assert.equal(bookRes.status, 201);
+    const bId = (await bookRes.json()).booking.id;
+
+    // 4. Role isolation enforcement: Worker blocked from admin & payment tampering
+    const workerAdminTry = await fetch(`${base}/api/admin/analytics`, { headers: { Authorization: `Bearer ${workerToken}` } });
+    assert.equal(workerAdminTry.status, 403);
+    const workerPriceTry = await fetch(`${base}/api/admin/services/1`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({ price: 9999 })
+    });
+    assert.equal(workerPriceTry.status, 403);
+
+    // 5. Razorpay Webhook verification: 503 without secret, 400 with invalid signature, 200 idempotent settlement with valid signature
+    const unconfWebhook = await fetch(`${base}/api/webhooks/razorpay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event: 'payment.captured' })
+    });
+    assert.equal(unconfWebhook.status, 503);
+
+    process.env.RAZORPAY_WEBHOOK_SECRET = 'webhook-audit-secret-test-key-32ch';
+    const rawBody = JSON.stringify({
+      event: 'payment.captured',
+      payload: {
+        payment: {
+          entity: {
+            id: 'pay_wh_001',
+            order_id: 'order_wh_001',
+            amount: 14900,
+            status: 'captured'
+          }
+        }
+      }
+    });
+
+    const forgedWebhook = await fetch(`${base}/api/webhooks/razorpay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Razorpay-Signature': '0'.repeat(64) },
+      body: rawBody
+    });
+    assert.equal(forgedWebhook.status, 400);
+
+    // Prepare matching completed razorpay order in DB
+    db.sqlite.prepare("UPDATE bookings SET worker_id = ?, status = 'completed', total = 149 WHERE id = ?").run(workerId, bId);
+    db.sqlite.prepare(
+      "INSERT INTO payment_orders (booking_id, provider_order_id, amount_paise, currency, status, created_at, updated_at) VALUES (?, 'order_wh_001', 14900, 'INR', 'created', ?, ?)"
+    ).run(bId, Date.now(), Date.now());
+
+    const validSig = crypto.createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET).update(rawBody).digest('hex');
+    const validWebhook = await fetch(`${base}/api/webhooks/razorpay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Razorpay-Signature': validSig },
+      body: rawBody
+    });
+    assert.equal(validWebhook.status, 200);
+    const webhookData = await validWebhook.json();
+    assert.equal(webhookData.received, true);
+
+    // Verify booking marked paid, cashback credited (+7), worker 85% commission credited (+126)
+    const afterB = db.sqlite.prepare('SELECT paid FROM bookings WHERE id = ?').get(bId);
+    const afterC = db.sqlite.prepare('SELECT wallet FROM users WHERE id = ?').get(custId);
+    const afterW = db.sqlite.prepare('SELECT wallet FROM users WHERE id = ?').get(workerId);
+    assert.equal(afterB.paid, 1);
+    assert.equal(afterC.wallet, 500 + Math.floor(149 * 0.05));
+    assert.equal(afterW.wallet, Math.floor(149 * 0.85));
+  } finally {
+    if (prevWebhookSecret !== undefined) process.env.RAZORPAY_WEBHOOK_SECRET = prevWebhookSecret;
+    else delete process.env.RAZORPAY_WEBHOOK_SECRET;
+    server.close();
+    await db.close();
+  }
+});
+
+
 
 
 

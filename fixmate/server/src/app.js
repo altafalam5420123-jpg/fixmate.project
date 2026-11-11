@@ -9,7 +9,7 @@ const path = require('path');
 const rateLimit = require('express-rate-limit');
 const { openDb, CATEGORIES } = require('./db');
 const { createAiRouter } = require('./aiRoutes');
-const { smartFindService } = require('./aiService');
+const { smartFindService, isOpenAIRealtimeConfigured, isGeminiConfigured } = require('./aiService');
 
 const COMMISSION = 0.15; // platform cut from worker earnings
 const VISIT_FEE = 99; // charged if customer rejects the quote
@@ -95,14 +95,19 @@ function createApp(db = openDb()) {
   app.disable('x-powered-by');
   const trustProxy = process.env.TRUST_PROXY;
   if (trustProxy) app.set('trust proxy', /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
-  app.use(express.json({ limit: '10kb' }));
+  app.use(express.json({
+    limit: '3mb',
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    }
+  }));
   const allowedOrigins = (process.env.CLIENT_ORIGIN || '*').split(',').map((origin) => origin.trim()).filter(Boolean);
   if (PROD && (!allowedOrigins.length || allowedOrigins.includes('*'))) bad(500, 'CLIENT_ORIGIN must list explicit production origins');
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self)');
     if (PROD && req.secure) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     next();
   });
@@ -113,8 +118,8 @@ function createApp(db = openDb()) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.vary('Origin');
     }
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Razorpay-Signature');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
     if (req.method === 'OPTIONS') return res.sendStatus(204);
     next();
   });
@@ -122,6 +127,40 @@ function createApp(db = openDb()) {
   const h = (fn) => (req, res, next) => { try { Promise.resolve(fn(req, res, next)).catch(next); } catch (e) { next(e); } };
   const ok = (res, data = {}, code = 200) => res.status(code).json({ success: true, ...data });
   app.use('/api', rateLimit({ windowMs: 15 * 60_000, max: Number(process.env.API_RATE_MAX) || 300, standardHeaders: true, legacyHeaders: false }));
+
+  // ---------- System Health & Credential Readiness (Phase 9) ----------
+  app.get('/api/health', h(async (req, res) => {
+    let dbOk = false;
+    try {
+      await db.queryOne('SELECT 1 AS ok');
+      dbOk = true;
+    } catch {}
+    const twilioReady = Boolean(
+      process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER &&
+      !/xxxx|replace/i.test(process.env.TWILIO_ACCOUNT_SID)
+    );
+    const razorpayReady = Boolean(
+      process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET &&
+      !/replace/i.test(process.env.RAZORPAY_KEY_ID)
+    );
+    const razorpayWebhookReady = Boolean(
+      process.env.RAZORPAY_WEBHOOK_SECRET && !/replace/i.test(process.env.RAZORPAY_WEBHOOK_SECRET)
+    );
+    res.status(dbOk ? 200 : 503).json({
+      success: dbOk,
+      status: dbOk ? 'ok' : 'degraded',
+      database: dbOk ? 'connected' : 'disconnected',
+      environment: PROD ? 'production' : 'development',
+      integrations: {
+        openai_realtime: isOpenAIRealtimeConfigured() ? 'ready' : 'BLOCKED',
+        gemini_chat: isGeminiConfigured() ? 'ready' : 'BLOCKED',
+        twilio_sms_otp: twilioReady ? 'ready' : 'BLOCKED',
+        razorpay_checkout: razorpayReady ? 'ready' : 'BLOCKED',
+        razorpay_webhook: razorpayWebhookReady ? 'ready' : 'BLOCKED',
+        leaflet_osm_tracking: 'ready'
+      }
+    });
+  }));
 
   const auth = (...roles) => async (req, res, next) => {
     try {
@@ -1212,6 +1251,43 @@ function createApp(db = openDb()) {
     }
   }));
 
+  async function settleBookingOnlinePayment({ booking: targetBooking, order: targetOrder, paymentId: pId, ignoreAlreadyPaid = false }) {
+    await db.transaction(async (tx) => {
+      const current = await tx.queryOne('SELECT status, provider_payment_id FROM payment_orders WHERE id = $1', [targetOrder.id]);
+      if (current.status === 'paid' && (ignoreAlreadyPaid || current.provider_payment_id === pId)) return;
+      if (current.status !== 'created') {
+        if (ignoreAlreadyPaid) return;
+        bad(409, 'Razorpay order active nahi hai');
+      }
+      const updBooking = await tx.query('UPDATE bookings SET paid = 1 WHERE id = $1 AND paid = 0', [targetBooking.id]);
+      if (updBooking.rowCount !== 1) {
+        if (ignoreAlreadyPaid) return;
+        bad(409, 'Booking payment pehle hi ho chuki hai');
+      }
+      const updOrder = await tx.query(
+        `UPDATE payment_orders SET status = 'paid', provider_payment_id = $1, updated_at = $2 WHERE id = $3 AND status = 'created'`,
+        [pId, Date.now(), targetOrder.id]
+      );
+      if (updOrder.rowCount !== 1) {
+        if (ignoreAlreadyPaid) return;
+        bad(409, 'Payment already processed');
+      }
+      await credit(targetBooking.customer_id, 'Cashback 5%', Math.floor(targetBooking.total * CASHBACK), tx);
+      if (targetBooking.worker_id) {
+        if (targetBooking.pay === 'wallet' || targetBooking.pay === 'razorpay') {
+          await credit(targetBooking.worker_id, `Kamai: ${targetBooking.service}`, Math.floor(targetBooking.total * (1 - COMMISSION)), tx);
+        } else if (targetBooking.pay === 'cash') {
+          const w = await tx.queryOne('SELECT wallet FROM users WHERE id = $1', [targetBooking.worker_id]);
+          const comm = Math.floor(targetBooking.total * COMMISSION);
+          const deduct = Math.min(w ? w.wallet : 0, comm);
+          if (deduct > 0) {
+            await credit(targetBooking.worker_id, `Platform fee (15% Cash): ${targetBooking.service}`, -deduct, tx);
+          }
+        }
+      }
+    });
+  }
+
   app.post('/api/bookings/:id/payment/verify', auth('customer'), h(async (req, res) => {
     const b = await load(req.params.id);
     mine(b, req.user);
@@ -1236,30 +1312,50 @@ function createApp(db = openDb()) {
     if (payment.id !== paymentId || payment.order_id !== orderId || payment.amount !== order.amount_paise || payment.currency !== 'INR' || payment.status !== 'captured')
       bad(402, 'Razorpay payment captured ya verify nahi hui');
 
-    await db.transaction(async (tx) => {
-      const current = await tx.queryOne('SELECT status, provider_payment_id FROM payment_orders WHERE id = $1', [order.id]);
-      if (current.status === 'paid' && current.provider_payment_id === paymentId) return;
-      if (current.status !== 'created') bad(409, 'Razorpay order active nahi hai');
-      const updBooking = await tx.query('UPDATE bookings SET paid = 1 WHERE id = $1 AND paid = 0', [b.id]);
-      if (updBooking.rowCount !== 1) bad(409, 'Booking payment pehle hi ho chuki hai');
-      const updOrder = await tx.query(`UPDATE payment_orders SET status = 'paid', provider_payment_id = $1, updated_at = $2 WHERE id = $3 AND status = 'created'`, [paymentId, Date.now(), order.id]);
-      if (updOrder.rowCount !== 1) bad(409, 'Payment already processed');
-      await credit(b.customer_id, 'Cashback 5%', Math.floor(b.total * CASHBACK), tx);
-      if (b.worker_id) {
-        if (b.pay === 'wallet' || b.pay === 'razorpay') {
-          await credit(b.worker_id, `Kamai: ${b.service}`, Math.floor(b.total * (1 - COMMISSION)), tx);
-        } else if (b.pay === 'cash') {
-          const w = await tx.queryOne('SELECT wallet FROM users WHERE id = $1', [b.worker_id]);
-          const comm = Math.floor(b.total * COMMISSION);
-          const deduct = Math.min(w ? w.wallet : 0, comm);
-          if (deduct > 0) {
-            await credit(b.worker_id, `Platform fee (15% Cash): ${b.service}`, -deduct, tx);
-          }
-        }
-      }
-    });
+    await settleBookingOnlinePayment({ booking: b, order, paymentId });
 
     ok(res, { booking: view(await load(b.id), req.user), message: 'Online payment verify ho gaya' });
+  }));
+
+  // ---------- Razorpay Webhook Signature Verification (Section 9) ----------
+  app.post('/api/webhooks/razorpay', h(async (req, res) => {
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!webhookSecret || /replace/i.test(webhookSecret)) {
+      bad(503, 'RAZORPAY_WEBHOOK_SECRET server par configure nahi hai');
+    }
+    const sig = String(req.get('x-razorpay-signature') || '').trim().toLowerCase();
+    if (!/^[a-f0-9]{64}$/.test(sig) || !req.rawBody) {
+      bad(400, 'Razorpay webhook signature invalid ya missing hai');
+    }
+    const expected = crypto.createHmac('sha256', webhookSecret).update(req.rawBody).digest('hex');
+    if (!same(expected, sig)) {
+      bad(400, 'Razorpay webhook signature verify nahi hua');
+    }
+
+    const event = req.body && req.body.event;
+    const entity = req.body?.payload?.payment?.entity;
+    if (!entity || !entity.order_id) {
+      return ok(res, { received: true, ignored: true });
+    }
+
+    const order = await db.queryOne('SELECT * FROM payment_orders WHERE provider_order_id = $1', [entity.order_id]);
+    if (!order) {
+      return ok(res, { received: true, ignored: true });
+    }
+
+    if (event === 'payment.captured' && entity.status === 'captured') {
+      const b = await db.queryOne(`${SELECT} WHERE b.id = $1`, [order.booking_id]);
+      if (b && Number(entity.amount) === Number(order.amount_paise)) {
+        await settleBookingOnlinePayment({ booking: b, order, paymentId: entity.id, ignoreAlreadyPaid: true });
+      }
+    } else if (event === 'payment.failed') {
+      await db.query(
+        `UPDATE payment_orders SET status = 'failed', updated_at = $1 WHERE id = $2 AND status IN ('creating', 'created')`,
+        [Date.now(), order.id]
+      );
+    }
+
+    ok(res, { received: true, event });
   }));
 
   // ---------- Digital Invoices & Tax Receipts (Phase 5) ----------
