@@ -508,12 +508,19 @@ function home() {
     </div>
   </div>
 
-  <!-- Smart Problem Diagnosis -->
+  <!-- Smart Service Finder (Text + Voice) -->
   <div class="card">
-    <b>${ic('spark', 16)} Problem batao</b>
-    <div class="mut">Apni dikkat likho, sahi service aur andaza mil jayega.</div>
-    <div class="row" style="margin-top:8px">
-      <input id="pb" placeholder="Jaise: AC thanda nahi kar raha, paani leak" style="margin:0">
+    <b>${ic('spark', 16)} Smart Service Finder — Problem batao</b>
+    <div class="mut">Apni dikkat bolein ya likhein (e.g. "AC thandi hawa nahi de raha", "Fan kaam nahi kar raha")</div>
+    <div class="row" style="margin-top:8px;gap:6px">
+      <input id="pb" placeholder="Jaise: AC thanda nahi kar raha, tap leak..." style="margin:0;flex:1" onkeydown="if(event.key==='Enter') diag()">
+      <button id="mic-diag-btn" class="mic-finder-btn" onclick="voiceDiag()" title="Bol kar dhundein" aria-label="Voice search problem">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="22"/>
+        </svg>
+      </button>
       <button class="btn sm" onclick="diag()">Dhundo</button>
     </div>
     <div id="dg"></div>
@@ -1738,8 +1745,8 @@ function renderModal() {
       <div class="modal-sheet invoice-sheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto;padding:20px">
         <div class="modal-header" style="margin-bottom:12px;display:flex;align-items:flex-start;justify-content:space-between">
           <div>
-            <h3 style="margin:0;font-size:18px">🧾 ${esc(inv.company.name)}</h3>
-            <div class="mut" style="font-size:11px">Tax Invoice · ${esc(inv.invoice_number)} · GSTIN: ${esc(inv.company.gstin)}</div>
+            <h3 style="margin:0;font-size:18px">🧾 FixMate Tax Invoice</h3>
+            <div class="mut" style="font-size:11px">${esc(inv.invoice_number)} · Date: ${esc(inv.date)} · ${inv.paid ? '✅ PAID' : '⏳ UNPAID'}</div>
           </div>
           <button class="modal-close" onclick="closeModal()">×</button>
         </div>
@@ -1747,15 +1754,15 @@ function renderModal() {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:var(--soft);padding:12px;border-radius:12px;margin-bottom:14px;font-size:12px">
           <div>
             <span class="mut" style="font-size:10px;text-transform:uppercase;font-weight:700">Customer Details</span><br>
-            <b>${esc(inv.customer.name)}</b><br>
-            ${esc(inv.customer.phone)}<br>
-            <span class="mut">${esc(inv.service_address)}</span>
+            <b>${esc(inv.customer?.name || 'Customer')}</b><br>
+            ${esc(inv.customer?.phone || '')}<br>
+            <span class="mut">${esc(inv.customer?.address || 'Dhanbad')}</span>
           </div>
           <div>
             <span class="mut" style="font-size:10px;text-transform:uppercase;font-weight:700">Service Details</span><br>
-            <b>${esc(inv.service_name)}</b><br>
-            Slot: ${esc(inv.service_slot)}<br>
-            Tech: <b>${esc(inv.technician.name)}</b> ${inv.technician.verified ? '⭐' : ''}
+            <b>${esc(inv.service?.name || 'Service')}</b><br>
+            Slot: ${esc(inv.service?.slot || '')}<br>
+            ${inv.technician ? `Tech: <b>${esc(inv.technician.name)}</b> ${inv.technician.verified ? '⭐' : ''}` : 'Tech: Pending'}
           </div>
         </div>
 
@@ -1768,11 +1775,11 @@ function renderModal() {
             </tr>
           </thead>
           <tbody>
-            ${(inv.line_items || []).map((it) => `
+            ${(inv.items || []).map((it) => `
               <tr style="border-bottom:1px dashed var(--bd)">
                 <td style="padding:8px 4px">
                   <b>${esc(it.title)}</b>
-                  ${it.description ? `<div class="mut" style="font-size:11px">${esc(it.description)}</div>` : ''}
+                  ${it.note ? `<div class="mut" style="font-size:11px">${esc(it.note)}</div>` : ''}
                 </td>
                 <td style="padding:8px 4px;text-align:right;font-weight:700;color:${it.amount < 0 ? 'var(--ok)' : 'var(--ink)'}">
                   ${it.amount < 0 ? '-' : ''}${inr(Math.abs(it.amount))}
@@ -1780,35 +1787,37 @@ function renderModal() {
               </tr>
             `).join('')}
             <tr style="border-top:1.5px solid var(--bd)">
-              <td style="padding:8px 4px">Taxable Subtotal</td>
-              <td style="padding:8px 4px;text-align:right">${inr(inv.subtotal)}</td>
+              <td style="padding:8px 4px">Taxable Value</td>
+              <td style="padding:8px 4px;text-align:right">₹${inv.gst?.taxable_value ?? inv.subtotal}</td>
             </tr>
             <tr>
               <td style="padding:4px 4px" class="mut">CGST (9%)</td>
-              <td style="padding:4px 4px;text-align:right" class="mut">${inr(inv.taxes.cgst_amount)}</td>
+              <td style="padding:4px 4px;text-align:right" class="mut">₹${inv.gst?.cgst_amount ?? 0}</td>
             </tr>
             <tr>
               <td style="padding:4px 4px" class="mut">SGST (9%)</td>
-              <td style="padding:4px 4px;text-align:right" class="mut">${inr(inv.taxes.sgst_amount)}</td>
+              <td style="padding:4px 4px;text-align:right" class="mut">₹${inv.gst?.sgst_amount ?? 0}</td>
             </tr>
             <tr style="border-top:2px solid var(--bd);font-size:14px;font-weight:800">
               <td style="padding:10px 4px">Total Payable</td>
-              <td style="padding:10px 4px;text-align:right;color:var(--sec)">${inr(inv.total_amount)}</td>
+              <td style="padding:10px 4px;text-align:right;color:var(--sec)">${inr(inv.total)}</td>
             </tr>
           </tbody>
         </table>
 
-        <div class="card" style="background:rgba(47,158,122,0.08);border:1px solid rgba(47,158,122,0.25);padding:10px 12px;margin-bottom:14px;border-radius:12px">
-          <div style="font-weight:700;color:var(--teal);font-size:12px">
-            🛡️ ${inv.warranty.coverage}
+        ${inv.warranty ? `
+          <div class="card" style="background:rgba(47,158,122,0.08);border:1px solid rgba(47,158,122,0.25);padding:10px 12px;margin-bottom:14px;border-radius:12px">
+            <div style="font-weight:700;color:var(--teal);font-size:12px">
+              🛡️ ${inv.warranty.service_warranty_days}-Day Service Warranty ${inv.warranty.parts_warranty_days ? `+ ${inv.warranty.parts_warranty_days}-Day Parts Warranty` : ''}
+            </div>
+            <div class="mut" style="font-size:11px;margin-top:2px">
+              Valid until <b>${esc(inv.warranty.valid_until)}</b>. ${esc(inv.warranty.terms)}
+            </div>
           </div>
-          <div class="mut" style="font-size:11px;margin-top:2px">
-            Valid until <b>${new Date(inv.warranty.valid_until).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</b>. ${inv.warranty.terms}
-          </div>
-        </div>
+        ` : ''}
 
         <div class="row" style="gap:10px">
-          <button class="btn acc" style="flex:1" onclick="downloadPdfInvoice(${inv.booking_id})">
+          <button class="btn acc" style="flex:1" onclick="downloadPdfInvoice(${S.activeInvoiceBookingId})">
             🖨️ Download / Print Tax Invoice
           </button>
           <button class="btn ghost" style="width:auto;padding:12px 18px" onclick="closeModal()">Band Karein</button>
@@ -2025,6 +2034,7 @@ async function openInvoiceModal(bookingId) {
     toast('Invoice load ho raha hai...');
     const res = await api('GET', `/bookings/${bookingId}/invoice`);
     if (res && res.invoice) {
+      S.activeInvoiceBookingId = bookingId;
       S.activeInvoice = res.invoice;
       S.modal = 'invoice';
       render();
@@ -2358,24 +2368,90 @@ const KW = [
   [/padh|tuition|maths|science|class|english|coding/i, 12]
 ];
 
-function diag() {
+async function diag() {
   const v = $('pb')?.value.trim();
   if (!v) {
-    toast('Pehle dikkat likho');
+    toast('Pehle apni dikkat likhein ya mic se bolein');
     return;
   }
-  const m = KW.find((k) => k[0].test(v));
   const dg = $('dg');
   if (!dg) return;
+
+  dg.innerHTML = '<div class="mut" style="margin-top:8px">🔍 Smart Finder check kar raha hai...</div>';
+
+  try {
+    const res = await api('POST', '/services/smart-find', { query: v });
+    if (res && res.success && res.recommended_services && res.recommended_services.length > 0) {
+      const top = res.recommended_services[0];
+      const idx = SV.findIndex((s) => s.id === top.id || s.n === top.name);
+      const causes = res.possible_causes || [];
+      dg.innerHTML = `<div class="card" style="margin:10px 0 0;border-color:var(--teal);background:rgba(0,106,96,0.03)">
+        <div class="row">
+          <b style="color:var(--teal)">🔍 Category: ${esc(res.detected_category)}</b>
+          <span class="badge ok">⭐ ${top.rating || 4.8}</span>
+        </div>
+        <div style="font-weight:700;font-size:14px;margin-top:4px">${esc(top.name)} — ${esc(top.base_price)}</div>
+        ${res.follow_up_question ? `<div class="mut" style="font-size:12px;margin-top:4px">${esc(res.follow_up_question)}</div>` : ''}
+        ${causes.length ? `
+          <div class="smart-find-causes">
+            <b>Possible reasons:</b>
+            <ul>${causes.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>
+          </div>
+        ` : ''}
+        <div class="row" style="margin-top:10px;gap:8px">
+          ${idx >= 0 ? `<button class="btn sm acc" style="flex:1" onclick="pick(${idx})">Book Karein</button>` : ''}
+          <button class="btn sm ghost" style="flex:1" onclick="window.FixMateAI&&window.FixMateAI.open('chat');setTimeout(()=>window.FixMateAI.sendSuggested(${JSON.stringify(v).replace(/"/g, '&quot;')}),300)">✨ Ask AI Assistant</button>
+        </div>
+      </div>`;
+      return;
+    }
+  } catch (e) {}
+
+  // Offline local fallback if backend unavailable
+  const m = KW.find((k) => k[0].test(v));
   if (m && SV[m[1]]) {
     const s = SV[m[1]];
     dg.innerHTML = `<div class="card" style="margin:10px 0 0;border-color:var(--sec)">
       <b>${ic(s.e, 18)} ${esc(s.n)}</b>
-      <div class="mut">Andaza: ${inr(s.p)} se ${inr(s.p * 1.6)} (final quote worker dekh ke dega)</div>
+      <div class="mut">Andaza: ${inr(s.p)} se ${inr(Math.round(s.p * 1.6))} (final quote worker dekh ke dega)</div>
       <button class="btn sm acc" style="margin-top:8px" onclick="pick(${m[1]})">Book karo</button>
     </div>`;
   } else {
     dg.innerHTML = '<div class="mut" style="margin-top:8px">Samajh nahi aaya. Neeche category mein se chun lo ya AI Assistant se pucho.</div>';
+  }
+}
+
+function voiceDiag() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    toast('Voice search support nahi hai. Apni dikkat type karein ya AI Chat kholein.');
+    return;
+  }
+  const btn = $('mic-diag-btn');
+  try {
+    const recog = new SpeechRecognition();
+    recog.lang = 'hi-IN';
+    recog.interimResults = false;
+    if (btn) btn.classList.add('listening');
+    toast('Sun raha hoon... Apni dikkat bolein');
+    recog.onresult = (ev) => {
+      const txt = ev.results?.[0]?.[0]?.transcript || '';
+      const inp = $('pb');
+      if (inp && txt) {
+        inp.value = txt;
+        diag();
+      }
+    };
+    recog.onerror = (ev) => {
+      if (ev.error === 'not-allowed') toast('Mic permission allow karein');
+    };
+    recog.onend = () => {
+      if (btn) btn.classList.remove('listening');
+    };
+    recog.start();
+  } catch (err) {
+    if (btn) btn.classList.remove('listening');
+    toast('Mic start error: ' + err.message);
   }
 }
 

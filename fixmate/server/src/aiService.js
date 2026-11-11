@@ -1,52 +1,56 @@
-const { TOOL_DEFINITIONS, executeTool } = require('./aiTools');
+const { TOOL_DEFINITIONS, executeTool, diagnoseSymptom } = require('./aiTools');
+const { CATEGORIES } = require('./db');
 
 const SYSTEM_PROMPT = `Aap FixMate home services platform (Dhanbad, Jharkhand) ke official AI Voice & Chat Assistant hain.
-Aapka kaam customer ki samasyaon ko samajhna, sahi service batana, transparent charges aur 30-din ki warranty explain karna, aur unke manzoori ke baad booking karna hai.
+Aapka kaam customer ki samasyaon ko samajhna, simple causes batana, follow-up sawal poochna, real database se service aur charges batana, aur customer ke explicit confirmation ke baad hi booking/reschedule/cancel karna hai.
 
 Niyam aur Vyavahar (Rules & Behavior):
 1. Bhasha (Language):
-   - Customer jis bhasha mein baat kare (Hindi, Hinglish ya English), usi bhasha mein aadar ke saath jawab dein.
-   - Natural Indian tone rakhein, jaise ek vinamra aur knowledgeable customer support executive baat karta hai.
-   - Example Hindi: "Bilkul! Main aapki help karta hoon. Washing machine mein kya dikkat aa rahi hai?"
-   - Example Hinglish: "Sure, main check kar deta hoon. Kya machine bilkul on nahi ho rahi ya spin nahi kar rahi?"
+   - Customer jis bhasha mein baat kare (Hindi, Hinglish ya English), usi bhasha mein vinamra aur natural Indian tone mein jawab dein.
+   - Example: Customer: "Meri washing machine se paani leak ho raha hai." -> Assistant: "Samajh gaya. Aapki washing machine front-load hai ya top-load? Iske aam karan drain pipe dheela hona ya door seal kharab hona ho sakta hai."
 
-2. Services aur Availability:
-   - FixMate Dhanbad mein in categories ki services deta hai: Electrician, Plumber, AC Repair, TV Repair, Mechanic, Home Tutor.
-   - Sabhi technicians 100% police-verified hain.
-   - Har service par 30 din ki free warranty milti hai.
-   - Technician aane par 4-digit security code se kaam shuru hota hai.
+2. Services aur Verified Data:
+   - FixMate Dhanbad mein yeh categories deta hai: ${CATEGORIES.join(', ')}.
+   - Hamesha 'search_services', 'check_availability', 'get_estimated_price', 'find_nearby_technicians', 'get_booking_status', 'get_invoice_summary', 'get_faqs' tools use karke REAL database records hi batayein.
+   - Kabhi bhi fake availability, fake price, ya fake booking ID na banayein.
 
-3. Tools Calling:
-   - Services dhundne ke liye 'search_services' use karein.
-   - Pricing ya charge poochne par 'get_estimated_price' use karein.
-   - Technician ya slot poochne par 'check_availability' aur 'find_nearby_technicians' use karein.
-   - Status janne ke liye 'get_booking_status' use karein.
-   - Cancellation ke liye 'request_booking_cancellation' use karein.
-   - Human support ya complicated dispute ke liye 'contact_human_support' call karein.
+3. Strict Confirmation Gate (VERY IMPORTANT):
+   - 'create_booking', 'reschedule_booking', ya 'request_booking_cancellation' call karne se PEHLE hamesha customer ko saaf summary dikhayein (Service, Slot, Address, Charges) aur poochein: "Kya main ise confirm kar doon?"
+   - Jab tak customer explicitly 'Haan' / 'Yes' / 'Confirm' na bole, booking create, modify ya cancel KABHI na karein.
 
-4. Booking Confirmation Rule (VERY IMPORTANT):
-   - Booking create karne se pehle hamesha customer ko poora summary batayein:
-     (Service, Slot, Address, Estimated charges)
-   - Aur saaf-saaf poochein: "Kya main ye booking confirm kar doon?" (ya English: "Would you like me to confirm this booking?")
-   - Customer ke explicit 'Haan' / 'Confirm' / 'Yes' kahne se pehle 'create_booking' tool KABHI call na karein.
+4. Invoices, Complaints & Support:
+   - Bill ya GST samajhne ke liye 'get_invoice_summary' use karein.
+   - Shikayat ya refund ke liye 'file_complaint' use karke asli support ticket darj karein.
+   - Human executive se baat karne ke liye 'contact_human_support' call karein.`;
 
-5. Security:
-   - Kisi customer se password ya bank OTP na maangein.
-   - Real-world database records hi use karein.`;
-
-async function createRealtimeSession() {
+function isOpenAIRealtimeConfigured() {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey || apiKey === 'your_openai_api_key_here') {
-    throw new Error('OPENAI_API_KEY backend .env mein configure nahi hai');
+  return Boolean(apiKey && apiKey !== 'your_openai_api_key_here' && !/your_|replace/i.test(apiKey) && apiKey.startsWith('sk-'));
+}
+
+function isGeminiConfigured() {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  return Boolean(geminiKey && geminiKey !== 'your_gemini_api_key_here' && !/your_|replace/i.test(geminiKey));
+}
+
+async function createRealtimeSession(language = 'auto') {
+  if (!isOpenAIRealtimeConfigured()) {
+    const err = new Error('BLOCKED: OPENAI_API_KEY backend .env mein configure nahi hai. Browser Web Speech fallback active rahega.');
+    err.code = 'REALTIME_BLOCKED';
+    throw err;
   }
 
+  const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_REALTIME_MODEL || 'gpt-4o-realtime-preview-2024-12-17';
   const voice = process.env.OPENAI_REALTIME_VOICE || 'alloy';
+  const langInstruction = language === 'hi'
+    ? '\nPreferred language for user replies: Hindi / Hinglish.'
+    : (language === 'en' ? '\nPreferred language for user replies: Clear Indian English.' : '');
 
   const body = {
     model,
     voice,
-    instructions: SYSTEM_PROMPT,
+    instructions: SYSTEM_PROMPT + langInstruction,
     tools: TOOL_DEFINITIONS,
     tool_choice: 'auto',
     input_audio_transcription: {
@@ -73,51 +77,46 @@ async function createRealtimeSession() {
       throw new Error(`OpenAI Realtime session failed (${res.status}): ${errText}`);
     }
 
-    const data = await res.json();
-    return data;
+    return await res.json();
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function handleChatMessage({ messages, user, db, activeBookingState }) {
-  // 1. Check Google Gemini (Super smart, fast, excellent Hindi/Hinglish & generous free tier)
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (geminiKey && geminiKey !== 'your_gemini_api_key_here') {
+async function handleChatMessage({ messages, user, db, activeBookingState = {}, language = 'auto' }) {
+  // 1. Google Gemini Chat with Function Calling
+  if (isGeminiConfigured()) {
     try {
-      return await callGeminiChat({ messages, user, db });
+      return await callGeminiChat({ messages, user, db, language });
     } catch (err) {
       console.warn('Gemini chat completion failed, falling back:', err.message);
     }
   }
 
-  // 2. Check OpenAI
-  const apiKey = process.env.OPENAI_API_KEY;
-  const hasOpenAI = apiKey && apiKey !== 'your_openai_api_key_here' && apiKey.startsWith('sk-');
-
-  if (hasOpenAI) {
+  // 2. OpenAI Chat Completions with Function Calling
+  if (isOpenAIRealtimeConfigured()) {
     try {
-      return await callOpenAIChat({ messages, user, db });
+      return await callOpenAIChat({ messages, user, db, language });
     } catch (err) {
-      console.warn('OpenAI chat completion failed, using intelligent built-in fallback:', err.message);
+      console.warn('OpenAI chat completion failed, using built-in fallback:', err.message);
     }
   }
 
-  // 3. Built-in intelligent assistant fallback
-  return await runLocalAIFallback({ messages, user, db, activeBookingState });
+  // 3. Built-in Intelligent Hindi/Hinglish/English DB-backed Assistant
+  return await runLocalAIFallback({ messages, user, db, activeBookingState, language });
 }
 
 let activeGeminiModel = null;
 
-async function callGeminiChat({ messages, user, db }) {
+async function callGeminiChat({ messages, user, db, language = 'auto' }) {
   const apiKey = process.env.GEMINI_API_KEY;
-  const preferredModel = activeGeminiModel || process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const preferredModel = activeGeminiModel || process.env.GEMINI_MODEL || 'gemini-flash-latest';
   const modelCandidates = [
-    preferredModel,
-    'gemini-1.5-flash',
-    'gemini-2.0-flash',
-    'gemini-2.5-flash',
-    'gemini-1.5-pro'
+    preferredModel === 'gemini-1.5-flash' ? 'gemini-flash-latest' : preferredModel,
+    'gemini-flash-latest',
+    'gemini-3.8-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-2.5-flash'
   ].filter((v, i, a) => v && a.indexOf(v) === i);
 
   const geminiTools = [{
@@ -136,6 +135,10 @@ async function callGeminiChat({ messages, user, db }) {
     contents.push({ role: 'user', parts: [{ text: 'Hello' }] });
   }
 
+  const langHint = language === 'hi'
+    ? '\nRespond primarily in Hindi/Hinglish.'
+    : (language === 'en' ? '\nRespond primarily in English.' : '');
+
   let iterations = 0;
   const maxIterations = 5;
   let executedCards = [];
@@ -143,7 +146,6 @@ async function callGeminiChat({ messages, user, db }) {
   while (iterations < maxIterations) {
     iterations++;
     let res = null;
-    let selectedModel = preferredModel;
 
     for (const testModel of modelCandidates) {
       const controller = new AbortController();
@@ -154,13 +156,13 @@ async function callGeminiChat({ messages, user, db }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             systemInstruction: {
-              parts: [{ text: SYSTEM_PROMPT }]
+              parts: [{ text: SYSTEM_PROMPT + langHint }]
             },
             contents,
             tools: geminiTools,
             generationConfig: {
-              temperature: 0.6,
-              maxOutputTokens: 600
+              temperature: 0.5,
+              maxOutputTokens: 650
             }
           }),
           signal: controller.signal
@@ -168,17 +170,13 @@ async function callGeminiChat({ messages, user, db }) {
 
         if (attempt.ok) {
           res = attempt;
-          selectedModel = testModel;
           activeGeminiModel = testModel;
           break;
         } else if (attempt.status !== 404) {
-          // If error is not 404 (model not found), don't keep cycling models
           res = attempt;
-          selectedModel = testModel;
           break;
         }
       } catch (e) {
-        // network or timeout error
         if (testModel === modelCandidates[modelCandidates.length - 1]) {
           throw e;
         }
@@ -237,12 +235,16 @@ async function callGeminiChat({ messages, user, db }) {
   };
 }
 
-async function callOpenAIChat({ messages, user, db }) {
+async function callOpenAIChat({ messages, user, db, language = 'auto' }) {
   const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
+  const langHint = language === 'hi'
+    ? '\nRespond primarily in Hindi/Hinglish.'
+    : (language === 'en' ? '\nRespond primarily in English.' : '');
+
   const conversation = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: SYSTEM_PROMPT + langHint },
     ...messages.slice(-10)
   ];
 
@@ -268,7 +270,7 @@ async function callOpenAIChat({ messages, user, db }) {
           messages: conversation,
           tools: TOOL_DEFINITIONS,
           tool_choice: 'auto',
-          temperature: 0.7
+          temperature: 0.6
         }),
         signal: controller.signal
       });
@@ -325,42 +327,98 @@ async function callOpenAIChat({ messages, user, db }) {
 }
 
 // -----------------------------------------------------------------------
-// Intelligent Built-in NLP Assistant (Hindi/Hinglish/English)
-// Works 100% out of the box even before OpenAI key is entered!
+// Intelligent Built-in DB-backed NLP Assistant (Hindi/Hinglish/English)
+// Never invents data; enforces confirmation before booking/cancel/reschedule.
 // -----------------------------------------------------------------------
-async function runLocalAIFallback({ messages, user, db, activeBookingState = {} }) {
+async function runLocalAIFallback({ messages, user, db, activeBookingState = {}, language = 'auto' }) {
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
   const text = (lastUserMsg ? lastUserMsg.content : '').trim();
   const lower = text.toLowerCase();
 
-  const isHindi = /[\u0900-\u097F]/.test(text);
-  const isConfirmation = /\b(haan|ha|haa|yes|yep|confirm|confirmed|kar do|kar do na|kar dijiye|theek hai|sahi hai|ok|done|sure|book|booking|book karo|book kardo|book kar do)\b/i.test(lower);
-  const isDenial = /\b(nahi|na|no|nope|cancel|mat karo|don't|stop)\b/i.test(lower);
+  const isHindi = language === 'hi' || /[\u0900-\u097F]/.test(text);
+  const isEnglishOnly = language === 'en';
+  const isConfirmation = /\b(haan|ha|haa|han|yes|yep|confirm|confirmed|kar do|kar do na|kar dijiye|theek hai|sahi hai|ok|done|sure)\b/i.test(lower);
+  const isDenial = /\b(nahi|nahin|na|no|nope|mat karo|don't|stop|rehne do)\b/i.test(lower);
 
   let cards = [];
   let reply = '';
 
-  // Extract serviceId from active state or previous conversation
-  let targetServiceId = activeBookingState.serviceId;
-  if (!targetServiceId) {
-    for (const m of [...messages].reverse()) {
-      const c = (m.content || '').toLowerCase();
-      if (/ac|cool|gas/i.test(c)) { targetServiceId = 7; break; }
-      if (/wash|machin|fan|switch|wiring|inverter/i.test(c)) { targetServiceId = 1; break; }
-      if (/plumb|tap|leak|water/i.test(c)) { targetServiceId = 4; break; }
-      if (/tv|screen/i.test(c)) { targetServiceId = 9; break; }
-      if (/bike|car/i.test(c)) { targetServiceId = 11; break; }
-      if (/tutor|teach|class/i.test(c)) { targetServiceId = 13; break; }
+  // Handle pending cancellation confirmation gate
+  if (activeBookingState.pendingAction === 'cancel') {
+    if (isDenial) {
+      return {
+        reply: isEnglishOnly
+          ? 'Alright, I will keep your booking active. Let me know if you need anything else!'
+          : 'Theek hai! Aapki booking active hi rahegi. Aur kya madad kar sakta hoon?',
+        cards: [],
+        pendingBooking: null,
+        provider: 'fixmate-ai'
+      };
+    }
+    if (isConfirmation && user) {
+      const cancelResult = await executeTool('request_booking_cancellation', {
+        booking_id: activeBookingState.bookingId,
+        reason: 'Customer confirmed via AI Assistant',
+        confirmed: true
+      }, { db, user });
+      cards.push({ tool: 'request_booking_cancellation', result: cancelResult });
+      return {
+        reply: cancelResult.message,
+        cards,
+        pendingBooking: null,
+        provider: 'fixmate-ai'
+      };
     }
   }
 
-  // 1. Booking Confirmation check
-  if (isConfirmation && !isDenial && (activeBookingState.pendingConfirmation || targetServiceId || /book|booking/i.test(lower))) {
+  // Handle pending reschedule confirmation gate
+  if (activeBookingState.pendingAction === 'reschedule') {
+    if (isDenial) {
+      return {
+        reply: 'Theek hai, slot change nahi kiya gaya hai.',
+        cards: [],
+        pendingBooking: null,
+        provider: 'fixmate-ai'
+      };
+    }
+    if (isConfirmation && user) {
+      const reschedResult = await executeTool('reschedule_booking', {
+        booking_id: activeBookingState.bookingId,
+        new_slot: activeBookingState.slot || 'Aaj 6 se 8 PM',
+        confirmed: true
+      }, { db, user });
+      cards.push({ tool: 'reschedule_booking', result: reschedResult });
+      return {
+        reply: reschedResult.message,
+        cards,
+        pendingBooking: null,
+        provider: 'fixmate-ai'
+      };
+    }
+  }
+
+  // Extract target serviceId from state or conversation context
+  let targetServiceId = activeBookingState.serviceId;
+  if (!targetServiceId) {
+    for (const m of [...messages].reverse()) {
+      const symptom = diagnoseSymptom(m.content || '');
+      if (symptom) {
+        const sRes = await executeTool('search_services', { query: m.content, category: symptom.fallbackDbCategory }, { db, user });
+        if (sRes.services && sRes.services.length > 0) {
+          targetServiceId = sRes.services[0].id;
+          break;
+        }
+      }
+    }
+  }
+
+  // 1. Booking Confirmation check (Strict gate!)
+  if (isConfirmation && !isDenial && (activeBookingState.pendingConfirmation || (targetServiceId && /\b(book|booking)\b/i.test(lower)))) {
     if (!user) {
       return {
         reply: isHindi
           ? 'Booking confirm karne ke liye pehle login zaroori hai. Kripya login screen par apna number verify karein.'
-          : 'Booking confirm karne ke liye pehle login karein. Login karte hi 1 click mein aapki booking ho jayegi.',
+          : 'Please log in first to confirm your booking. Once signed in, I can confirm it right away!',
         needsLogin: true,
         cards: []
       };
@@ -381,9 +439,9 @@ async function runLocalAIFallback({ messages, user, db, activeBookingState = {} 
     cards.push({ tool: 'create_booking', result: bookResult });
 
     if (bookResult.success) {
-      reply = isHindi
-        ? `🎉 Badhai ho! Aapki booking confirm ho chuki hai (Booking ID: #${bookResult.booking.id}). Hamara verified technician ${slot} pahuchega. Technician aane par unhe safety code ${bookResult.booking.start_code} batayein.`
-        : `🎉 Great! Aapki booking confirm ho gayi hai (ID: #${bookResult.booking.id})! Slot: "${slot}". Technician pahuche to unhe 4-digit safety code ${bookResult.booking.start_code} dikhayein. 30 din ki free warranty included hai!`;
+      reply = isEnglishOnly
+        ? `🎉 Confirmed! Booking #${bookResult.booking.id} (${bookResult.booking.service}) is scheduled for "${slot}". Share 4-digit Safety Code ${bookResult.booking.start_code} with our verified technician on arrival.`
+        : `🎉 Badhai ho! Aapki booking confirm ho chuki hai (ID: #${bookResult.booking.id} - ${bookResult.booking.service}). Slot: "${slot}". Technician pahuche to 4-digit safety code ${bookResult.booking.start_code} dikhayein. 30 din ki free warranty shamil hai!`;
     } else {
       reply = bookResult.message || 'Booking mein dikkat aayi. Kripya thodi der baad dobara koshish karein.';
     }
@@ -391,102 +449,168 @@ async function runLocalAIFallback({ messages, user, db, activeBookingState = {} 
     return { reply, cards, provider: 'fixmate-ai' };
   }
 
-  // 2. Cancellation of confirmation
+  // 2. Denial of pending booking
   if (isDenial && activeBookingState.pendingConfirmation) {
     return {
       reply: isHindi
         ? 'Ji bilkul, maine booking cancel kar di hai. Kya aap kisi aur service ya dusre time slot ki jankari lena chahenge?'
-        : 'Koi baat nahi! Booking request cancel kar di gayi hai. Aap jab chahein naya slot ya service book kar sakte hain.',
+        : 'No problem! I did not place the booking. Let me know whenever you want to check another service or slot.',
       cards: [],
+      pendingBooking: null,
       provider: 'fixmate-ai'
     };
   }
 
-  // 3. Cancellation request
-  if (lower.includes('cancel') || lower.includes('radd') || lower.includes('band')) {
+  // 3. Cancellation request (Ask explicit confirmation first!)
+  if (/\b(cancel|radd)\b/i.test(lower)) {
     if (!user) {
       return { reply: 'Booking cancel karne ke liye pehle login karein.', needsLogin: true, cards: [] };
     }
     const statusResult = await executeTool('get_booking_status', {}, { db, user });
-    if (statusResult.bookings && statusResult.bookings.length > 0) {
-      const b = statusResult.bookings[0];
-      const cancelResult = await executeTool('request_booking_cancellation', {
-        booking_id: b.booking_id,
-        reason: 'Customer requested via AI Assistant'
-      }, { db, user });
-      cards.push({ tool: 'request_booking_cancellation', result: cancelResult });
-      reply = cancelResult.message;
+    cards.push({ tool: 'get_booking_status', result: statusResult });
+    const cancellable = (statusResult.bookings || []).find(b => ['requested', 'assigned'].includes(b.status));
+    if (cancellable) {
+      return {
+        reply: `Aapki booking #${cancellable.booking_id} (${cancellable.service}, Slot: ${cancellable.slot}) abhi cancel ho sakti hai (free cancellation). Kya main is booking ko confirm cancel kar doon? ("Haan" ya "Nahi" bolein)`,
+        cards,
+        pendingBooking: {
+          pendingAction: 'cancel',
+          bookingId: cancellable.booking_id,
+          pendingConfirmation: true
+        },
+        provider: 'fixmate-ai'
+      };
+    }
+    return {
+      reply: 'Aapki koi cancellable active booking (Requested/Assigned status) nahi mili. Agar technician kaam shuru kar chuka hai, to human support se baat karein.',
+      cards,
+      provider: 'fixmate-ai'
+    };
+  }
+
+  // 4. Reschedule request (Ask confirmation first!)
+  if (/reschedule|time\s*badl|slot\s*change|slot\s*badl/i.test(lower)) {
+    if (!user) {
+      return { reply: 'Slot reschedule karne ke liye pehle login karein.', needsLogin: true, cards: [] };
+    }
+    const statusResult = await executeTool('get_booking_status', {}, { db, user });
+    cards.push({ tool: 'get_booking_status', result: statusResult });
+    const reschedulable = (statusResult.bookings || []).find(b => ['requested', 'assigned'].includes(b.status));
+    if (reschedulable) {
+      const requestedSlot = /kal|tomorrow/i.test(lower) ? 'Kal 10 se 12 AM' : (/shaam|evening|6|7|8/i.test(lower) ? 'Aaj 6 se 8 PM' : 'Aaj 6 se 8 PM');
+      return {
+        reply: `Aapki Booking #${reschedulable.booking_id} abhi "${reschedulable.slot}" par hai. Kya main iska time badal kar "${requestedSlot}" confirm kar doon? ("Haan" kahein ya apna pasandida slot batayein)`,
+        cards,
+        pendingBooking: {
+          pendingAction: 'reschedule',
+          bookingId: reschedulable.booking_id,
+          slot: requestedSlot,
+          pendingConfirmation: true
+        },
+        provider: 'fixmate-ai'
+      };
+    }
+    return {
+      reply: 'Aapki koi reschedule ho sakne wali active booking nahi mili.',
+      cards,
+      provider: 'fixmate-ai'
+    };
+  }
+
+  // 5. Invoice / Bill / Payment explanation
+  if (/invoice|bill|gst|receipt|kitna paisa|charge\s*kyun|payment\s*detail/i.test(lower)) {
+    if (!user) {
+      return { reply: 'Apna invoice aur payment details dekhne ke liye pehle login karein.', needsLogin: true, cards: [] };
+    }
+    const invResult = await executeTool('get_invoice_summary', {}, { db, user });
+    cards.push({ tool: 'get_invoice_summary', result: invResult });
+    if (invResult.success && invResult.invoice) {
+      const iv = invResult.invoice;
+      reply = `Aapka Invoice ${iv.invoice_number} (${iv.service_name}): Base Labor ${iv.base_labor}, Spare Parts ${iv.spare_parts}, Discount ${iv.discount}, Taxes ${iv.gst_breakdown}. Total Payable: ${iv.total_payable} (${iv.payment_status}). Warranty: ${iv.warranty}.`;
     } else {
-      reply = 'Aapki koi active booking nahi mili jise cancel kiya ja sake.';
+      reply = invResult.message;
     }
     return { reply, cards, provider: 'fixmate-ai' };
   }
 
-  // 4. Status check / My bookings
-  if (lower.includes('status') || lower.includes('booking') || lower.includes('mera kaam') || lower.includes('track')) {
+  // 6. Complaint registration
+  if (/complaint|shikayat|refund\s*chahiye|galat\s*kaam|kharab\s*kaam/i.test(lower)) {
     if (!user) {
-      return {
-        reply: 'Apni bookings dekhne aur track karne ke liye pehle login karein.',
-        needsLogin: true,
-        cards: []
-      };
+      return { reply: 'Complaint darj karne ke liye pehle login karein, ya helpline +91 7209612650 par call karein.', needsLogin: true, cards: [] };
+    }
+    const compResult = await executeTool('file_complaint', {
+      category: /refund|paise|charge|bill/i.test(lower) ? 'Pricing Dispute' : 'Quality of Work',
+      description: text.length >= 5 ? text : 'Customer filed support issue via AI Assistant',
+      refund_requested: /refund/i.test(lower)
+    }, { db, user });
+    cards.push({ tool: 'file_complaint', result: compResult });
+    return { reply: compResult.message, cards, provider: 'fixmate-ai' };
+  }
+
+  // 7. FAQs (Warranty / Visiting Fee / Safety / Cancellation Policy)
+  if (/warranty|guarantee|visit\s*fee|visiting\s*charge|safety\s*code|policy|cancel\s*charge/i.test(lower)) {
+    let topic = 'all';
+    if (/warranty|guarantee/i.test(lower)) topic = 'warranty';
+    else if (/visit/i.test(lower)) topic = 'visiting_fee';
+    else if (/safety|code|otp/i.test(lower)) topic = 'safety';
+    else if (/cancel/i.test(lower)) topic = 'cancellation';
+
+    const faqResult = await executeTool('get_faqs', { topic }, { db, user });
+    cards.push({ tool: 'get_faqs', result: faqResult });
+    return {
+      reply: faqResult.answer || `FixMate Policy: 30 din free warranty, ₹99 visiting charge (kaam manzoor karne par maaf), verified technicians aur 4-digit OTP safety code.`,
+      cards,
+      provider: 'fixmate-ai'
+    };
+  }
+
+  // 8. Status check / My bookings
+  if (/status|mera kaam|track|my booking/i.test(lower)) {
+    if (!user) {
+      return { reply: 'Apni bookings dekhne aur track karne ke liye pehle login karein.', needsLogin: true, cards: [] };
     }
     const statusResult = await executeTool('get_booking_status', {}, { db, user });
     cards.push({ tool: 'get_booking_status', result: statusResult });
     if (statusResult.bookings && statusResult.bookings.length > 0) {
       const b = statusResult.bookings[0];
-      reply = `Aapki active booking (#${b.booking_id} - ${b.service}) ka status hai: "${b.status_text}". Slot: ${b.slot}. Technician: ${b.assigned_worker}. Safety Code: ${b.start_code || '---'}.`;
+      reply = `Aapki booking #${b.booking_id} (${b.service}) ka status hai: "${b.status_text}". Slot: ${b.slot}. Technician: ${b.assigned_worker}. Safety Code: ${b.start_code || '---'}.`;
     } else {
-      reply = 'Abhi aapki koi active booking nahi hai. Kya aap koi nayi service book karna chahte hain? Jaise Electrician, Plumber, AC Repair ya Home Tutor?';
+      reply = 'Abhi aapki koi active booking nahi mili. Kya aap koi nayi service book karna chahte hain?';
     }
     return { reply, cards, provider: 'fixmate-ai' };
   }
 
-  // 5. Human support / Escalation
-  if (lower.includes('human') || lower.includes('support') || lower.includes('help desk') || lower.includes('complaint') || lower.includes('shikayat') || lower.includes('customer care')) {
+  // 9. Human support escalation
+  if (/human|support|help\s*desk|customer\s*care|agent|baat\s*kar/i.test(lower)) {
     const supportResult = await executeTool('contact_human_support', {
       reason: text,
       customer_phone: user ? user.phone : 'Unregistered'
     }, { db, user });
     cards.push({ tool: 'contact_human_support', result: supportResult });
-    reply = `FixMate Customer Care desk se connect kar diya gaya hai. Helpline: ${supportResult.support_phone} (Timing: ${supportResult.hours}). Ticket: #${supportResult.ticket_id}. ${supportResult.note}`;
+    reply = `FixMate Customer Care desk se connect kar diya gaya hai. Helpline: ${supportResult.support_phone} (Timing: ${supportResult.hours}). Reference: #${supportResult.ticket_id}. ${supportResult.note}`;
     return { reply, cards, provider: 'fixmate-ai' };
   }
 
-  // 6. Technician check
-  if (lower.includes('technician') || lower.includes('worker') || lower.includes('karigar') || lower.includes('mistri')) {
-    let cat = 'Electrician';
-    if (lower.includes('plumb') || lower.includes('pipe') || lower.includes('nal')) cat = 'Plumber';
-    if (lower.includes('ac') || lower.includes('cool')) cat = 'AC Repair';
-    if (lower.includes('tv')) cat = 'TV Repair';
-    if (lower.includes('bike') || lower.includes('car') || lower.includes('mechanic')) cat = 'Mechanic';
-    if (lower.includes('tutor') || lower.includes('padhai')) cat = 'Home Tutor';
-
+  // 10. Technician check
+  if (/technician|worker|karigar|mistri/i.test(lower)) {
+    const symptom = diagnoseSymptom(lower);
+    const cat = symptom ? symptom.fallbackDbCategory : 'Electrician';
     const techResult = await executeTool('find_nearby_technicians', { category: cat }, { db, user });
     cards.push({ tool: 'find_nearby_technicians', result: techResult });
-    reply = `Dhanbad mein ${cat} ke verified technicians online aur available hain. Sabhi ID & Police-verified hain aur 4.8+ rated hain. Kya aap appointment book karna chahte hain?`;
+    if (techResult.count > 0) {
+      reply = `Dhanbad mein ${cat} ke ${techResult.count} police & ID-verified technicians uplabdh hain. Kya aap appointment book karna chahenge?`;
+    } else {
+      reply = `Abhi ${cat} category mein koi technician online nahi dikh raha hai. Aap scheduled slot choose kar sakte hain ya support team se baat kar sakte hain.`;
+    }
     return { reply, cards, provider: 'fixmate-ai' };
   }
 
-  // 7. General search & problem matching
-  let matchedCategory = null;
-  if (/electric|switch|fan|wiring|inverter|light|bijli/i.test(lower)) matchedCategory = 'Electrician';
-  else if (/plumb|tap|leak|water|tank|nal|pipe/i.test(lower)) matchedCategory = 'Plumber';
-  else if (/ac|gas|cool|split|filter|ac repair/i.test(lower)) matchedCategory = 'AC Repair';
-  else if (/tv|screen|sound|mount|television/i.test(lower)) matchedCategory = 'TV Repair';
-  else if (/bike|car|puncture|engine|service|mechanic/i.test(lower)) matchedCategory = 'Mechanic';
-  else if (/tutor|teacher|maths|science|class|padhai/i.test(lower)) matchedCategory = 'Home Tutor';
-  else if (/washing machine|wash|spin|drain|dryer|fridge|refrigerator|microwave/i.test(lower)) matchedCategory = 'Electrician';
-
-  // Inherit category from conversation context if not explicitly mentioned in this turn
-  if (!matchedCategory && targetServiceId) {
-    const prevService = await db.queryOne('SELECT cat FROM services WHERE id = $1', [targetServiceId]);
-    if (prevService) matchedCategory = prevService.cat;
-  }
-
+  // 11. Smart Symptom Diagnosis & Service Search
+  const symptom = diagnoseSymptom(text);
+  const searchCat = symptom ? symptom.fallbackDbCategory : undefined;
   const searchResult = await executeTool('search_services', {
     query: text,
-    category: matchedCategory || undefined
+    category: searchCat
   }, { db, user });
 
   cards.push({ tool: 'search_services', result: searchResult });
@@ -502,17 +626,23 @@ async function runLocalAIFallback({ messages, user, db, activeBookingState = {} 
     }, { db, user });
     cards.push({ tool: 'get_estimated_price', result: priceResult });
 
-    const alreadyAskedProblem = messages.some(m => m.role === 'assistant' && /kya problem aa rahi hai/i.test(m.content || ''));
-    const userDescribedProblem = /spin|chal|on|chalu|leak|kharab|awaz|vibration|motor|power|wire|current|garam|thanda|book|booking/i.test(lower);
+    const alreadyAskedFollowUp = messages.some(m =>
+      m.role === 'assistant' && /front-load|split ac|window ac|continuous|tapak/i.test(m.content || '')
+    );
 
-    if (/washing machine|wash machine/i.test(lower) && !alreadyAskedProblem && !userDescribedProblem) {
-      reply = isHindi
-        ? `Bilkul! Main aapki help karta hoon. Washing machine mein kya problem aa rahi hai? (Jaise spin nahi chal raha, paani leak ho raha hai, ya machine on nahi ho rahi?) Hamara verified expert Dhanbad mein 60 minute mein inspection ke liye aa sakta hai.`
-        : `Bilkul! Main aapki help karta hoon. Washing machine mein kya problem aa rahi hai? Jaise machine on nahi ho rahi, vibration hai, ya spin nahi ho raha? Visit charge ${top.base_price} se start hai jo final quote mein adjust ho jayega.`;
+    if (symptom && !alreadyAskedFollowUp && !/\b(book|booking|rate|price|charge|kitna)\b/i.test(lower)) {
+      const followUp = isEnglishOnly ? symptom.followUpEn : symptom.followUpHi;
+      const causesNote = symptom.causes.length
+        ? `\n\nPossible reasons: ${symptom.causes.slice(0, 2).join('; ')}.`
+        : '';
+      const techNote = availResult.available
+        ? `Recommended: "${top.name}" (${top.base_price} base labor, ₹99 visit fee inspection approve hone par maaf).`
+        : `Note: Abhi is slot mein live technician offline hai, aap later slot reserve kar sakte hain.`;
+      reply = `${followUp}${causesNote}\n${techNote}`;
     } else {
-      reply = isHindi
-        ? `Ji! Hamare paas "${top.name}" uplabdh hai (Rating: ⭐ ${top.rating}). Visit charge ${top.base_price} se shuru hota hai jo kaam hone par final quote mein jud jata hai. 30 din ki free warranty bhi shamil hai. Dhanbad mein technician 60 minute mein pahuch sakta hai. Kya main aapke liye ye booking confirm kar doon? ("Haan book kar do" kahein)`
-        : `Maine aapke liye "${top.name}" find kiya hai (⭐ ${top.rating}). Base visit charge: ${top.base_price}. Dhanbad mein technician 60 minute mein aa sakta hai. 30-day warranty included hai. Kya main ye booking confirm kar doon? ("Haan book kar do" kahein)`;
+      reply = isEnglishOnly
+        ? `Found "${top.name}" (⭐ ${top.rating}). Estimated base fee: ${top.base_price} (plus parts if approved; ₹99 visit charge waived on approval). ${availResult.online_technicians} verified technician(s) available in Dhanbad. Should I confirm this booking for "Abhi (60 min mein)"?`
+        : `Ji! Hamare paas "${top.name}" uplabdh hai (⭐ ${top.rating}). Base fee: ${top.base_price} (₹99 visiting charge kaam manzoor hone par maaf ho jata hai, 30 din free warranty shamil). Dhanbad mein ${availResult.online_technicians} verified technician(s) available hain. Kya main ye booking confirm kar doon? ("Haan book kar do" kahein)`;
     }
 
     return {
@@ -523,22 +653,69 @@ async function runLocalAIFallback({ messages, user, db, activeBookingState = {} 
         serviceId: top.id,
         serviceName: top.name,
         price: top.price_numeric,
-        slot: 'Abhi (60 min mein)'
+        slot: availResult.available_slots[0] || 'Abhi (60 min mein)'
       }
     };
   }
 
   // Default welcome
-  reply = isHindi
-    ? 'Namaste! Main FixMate AI Assistant hoon. Main Dhanbad mein Electrician, Plumber, AC Repair, TV Repair, Mechanic aur Home Tutor services book karne mein aapki sahayata kar sakta hoon. Aapko kis service ki zaroorat hai?'
-    : 'Hello! I am your FixMate AI Assistant. You can speak or type in Hindi, Hinglish, or English. How can I help you today? You can ask about AC repair, Electrician, Plumber, Technician status, or booking charges!';
+  reply = isEnglishOnly
+    ? 'Hello! I am FixMate AI Assistant. Tell me your home repair problem (e.g., AC not cooling, washing machine leak, tap leak, fan repair) or ask about your booking/invoice.'
+    : 'Namaste! Main FixMate AI Assistant hoon. Apni home service problem batayein (jaise "AC thandi hawa nahi de raha", "washing machine se paani leak", "tap leak", "fan repair") ya booking/bill check karein!';
 
   return { reply, cards, provider: 'fixmate-ai' };
 }
 
+// -----------------------------------------------------------------------
+// Smart Service Finder (Section 4): Maps natural language issue -> real DB service
+// -----------------------------------------------------------------------
+async function smartFindService({ query, db }) {
+  const cleanQuery = String(query || '').trim();
+  if (!cleanQuery) {
+    return { success: false, error: 'Kripya apni samasya likhein ya bolein' };
+  }
+
+  const symptom = diagnoseSymptom(cleanQuery);
+  const searchRes = await executeTool('search_services', {
+    query: cleanQuery,
+    category: symptom ? symptom.fallbackDbCategory : undefined
+  }, { db, user: null });
+
+  let recommended = searchRes.services || [];
+  if (recommended.length === 0) {
+    // Fallback to top rated general services from real DB
+    const topRes = await db.query('SELECT id, cat, name, price, rating FROM services ORDER BY rating DESC LIMIT 3');
+    recommended = topRes.rows.map(s => ({
+      id: s.id,
+      category: s.cat,
+      name: s.name,
+      base_price: `₹${s.price}`,
+      price_numeric: s.price,
+      rating: Number(s.rating),
+      starting_note: `Visit/Base fee starts at ₹${s.price}`
+    }));
+  }
+
+  const top = recommended[0] || null;
+  const avail = top ? await executeTool('check_availability', { service_id: top.id }, { db, user: null }) : null;
+
+  return {
+    success: true,
+    query: cleanQuery,
+    detected_category: symptom ? symptom.category : (top ? top.category : 'General Home Maintenance'),
+    possible_causes: symptom ? symptom.causes : [],
+    follow_up_question: symptom ? symptom.followUpHi : null,
+    recommended_services: recommended,
+    availability: avail
+  };
+}
+
 module.exports = {
   SYSTEM_PROMPT,
+  isOpenAIRealtimeConfigured,
+  isGeminiConfigured,
   createRealtimeSession,
   handleChatMessage,
-  runLocalAIFallback
+  runLocalAIFallback,
+  smartFindService
 };

@@ -9,6 +9,7 @@ const path = require('path');
 const rateLimit = require('express-rate-limit');
 const { openDb, CATEGORIES } = require('./db');
 const { createAiRouter } = require('./aiRoutes');
+const { smartFindService } = require('./aiService');
 
 const COMMISSION = 0.15; // platform cut from worker earnings
 const VISIT_FEE = 99; // charged if customer rejects the quote
@@ -389,6 +390,21 @@ function createApp(db = openDb()) {
       [cat || null, q || null]
     );
     ok(res, { categories: CATEGORIES, services: result.rows });
+  }));
+
+  // ---------- Smart Service Finder (Section 4) ----------
+  app.post('/api/services/smart-find', h(async (req, res) => {
+    const query = (req.body && req.body.query) || '';
+    const result = await smartFindService({ query, db });
+    if (!result.success) return bad(400, result.error);
+    ok(res, result);
+  }));
+
+  app.get('/api/services/smart-find', h(async (req, res) => {
+    const query = req.query.q || req.query.query || '';
+    const result = await smartFindService({ query, db });
+    if (!result.success) return bad(400, result.error);
+    ok(res, result);
   }));
 
   // ---------- Categories ----------
@@ -1482,7 +1498,7 @@ function createApp(db = openDb()) {
   }));
 
   // ---------- AI Assistant (Voice + Chat) ----------
-  app.use('/api/ai', createAiRouter({ db, authOptional }));
+  app.use('/api/ai', createAiRouter({ db, auth, authOptional }));
 
   app.use((req, res) => res.status(404).json({ success: false, message: 'Route nahi mila' }));
   // eslint-disable-next-line no-unused-vars

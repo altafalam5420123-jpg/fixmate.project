@@ -101,8 +101,12 @@ test('AI Voice & Chat Assistant: Database Tool Execution with PostgreSQL Adapter
   assert.equal(status.bookings.length, 1);
   assert.equal(status.bookings[0].booking_id, booking.booking.id);
 
-  // 7. Tool: request_booking_cancellation
-  const cancel = await executeTool('request_booking_cancellation', { booking_id: booking.booking.id }, { db, user: testUser });
+  // 7. Tool: request_booking_cancellation (must require explicit confirmed: true)
+  const blockedCancel = await executeTool('request_booking_cancellation', { booking_id: booking.booking.id }, { db, user: testUser });
+  assert.equal(blockedCancel.success, false);
+  assert.equal(blockedCancel.needs_confirmation, true);
+
+  const cancel = await executeTool('request_booking_cancellation', { booking_id: booking.booking.id, confirmed: true }, { db, user: testUser });
   assert.equal(cancel.success, true);
   assert.equal(cancel.cancelled, true);
 
@@ -800,6 +804,190 @@ test('Phase 5 Transparent Pricing & Digital Invoices: Parts Breakdown, Customer 
     await db.close();
   }
 });
+
+test('Phase 6 AI Voice Agent, Authenticated Session, Conversation History & Smart Service Finder', async () => {
+  const jwt = require('jsonwebtoken');
+  const { createApp } = require('../src/app');
+  const db = openDb(':memory:');
+  await db.initDb();
+
+  const prevGemini = process.env.GEMINI_API_KEY;
+  const prevOpenAI = process.env.OPENAI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+
+  const custId = Number(db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet) VALUES ('9876540001', 'AI Voice User', 'customer', null, 3000)").run().lastInsertRowid);
+  const custToken = jwt.sign({ id: custId, tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+
+  const server = createApp(db).listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://localhost:${server.address().port}`;
+
+  try {
+    // 1. Honest AI readiness status (Realtime WebRTC reported as BLOCKED when OPENAI_API_KEY unset)
+    const statusRes = await fetch(`${base}/api/ai/status`);
+    assert.equal(statusRes.status, 200);
+    const statusData = await statusRes.json();
+    assert.equal(statusData.success, true);
+    assert.equal(statusData.realtime_webrtc, 'BLOCKED');
+    assert.equal(statusData.speech_fallback, 'browser_web_speech_api');
+
+    // 2. Session endpoint must reject unauthenticated callers (401)
+    const unauthSession = await fetch(`${base}/api/ai/session`, { method: 'POST' });
+    assert.equal(unauthSession.status, 401);
+
+    // 3. Authenticated session returns 503 BLOCKED gracefully when OpenAI key is missing
+    const authSession = await fetch(`${base}/api/ai/session`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${custToken}` }
+    });
+    assert.equal(authSession.status, 503);
+    const authSessData = await authSession.json();
+    assert.equal(authSessData.blocked, true);
+
+    // 4. Smart Service Finder (Hindi / Hinglish problem phrases)
+    const smartAcRes = await fetch(`${base}/api/services/smart-find`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'AC thandi hawa nahi de raha' })
+    });
+    assert.equal(smartAcRes.status, 200);
+    const smartAcData = await smartAcRes.json();
+    assert.equal(smartAcData.success, true);
+    assert.equal(smartAcData.detected_category, 'AC Repair');
+    assert.ok(smartAcData.possible_causes.length >= 2);
+    assert.ok(smartAcData.recommended_services.length >= 1);
+
+    const smartTapRes = await fetch(`${base}/api/services/smart-find`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: 'Bathroom ka tap leak kar raha hai' })
+    });
+    assert.equal(smartTapRes.status, 200);
+    const smartTapData = await smartTapRes.json();
+    assert.equal(smartTapData.detected_category, 'Plumber');
+
+    // 5. Multi-turn Hinglish AI Chat with Follow-up Question & DB Persistence
+    const chat1Res = await fetch(`${base}/api/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'Meri washing machine se paani leak ho raha hai.' }]
+      })
+    });
+    assert.equal(chat1Res.status, 200);
+    const chat1 = await chat1Res.json();
+    assert.equal(chat1.success, true);
+    assert.ok(/front-load|top-load/i.test(chat1.reply));
+    assert.ok(chat1.pendingBooking);
+
+    // Confirm booking explicitly
+    const chat2Res = await fetch(`${base}/api/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({
+        messages: [
+          { role: 'user', content: 'Meri washing machine se paani leak ho raha hai.' },
+          { role: 'assistant', content: chat1.reply },
+          { role: 'user', content: 'Front-load hai, haan book kar do' }
+        ],
+        activeBookingState: { ...chat1.pendingBooking, pendingConfirmation: true }
+      })
+    });
+    assert.equal(chat2Res.status, 200);
+    const chat2 = await chat2Res.json();
+    const createdCard = (chat2.cards || []).find(c => c.tool === 'create_booking' && c.result?.success);
+    assert.ok(createdCard);
+    const bookedId = createdCard.result.booking.id;
+
+    // Reschedule confirmation check & execution via tool
+    const reschedBlocked = await executeTool('reschedule_booking', { booking_id: bookedId, new_slot: 'Kal 10 se 12 AM' }, {
+      db,
+      user: { id: custId, role: 'customer' }
+    });
+    assert.equal(reschedBlocked.success, false);
+    assert.equal(reschedBlocked.needs_confirmation, true);
+
+    const reschedOk = await executeTool('reschedule_booking', { booking_id: bookedId, new_slot: 'Kal 10 se 12 AM', confirmed: true }, {
+      db,
+      user: { id: custId, role: 'customer' }
+    });
+    assert.equal(reschedOk.success, true);
+    assert.equal(reschedOk.new_slot, 'Kal 10 se 12 AM');
+
+    // Invoice explanation via AI Chat
+    const invChatRes = await fetch(`${base}/api/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'Mera invoice bill explain karo' }] })
+    });
+    assert.equal(invChatRes.status, 200);
+    const invChat = await invChatRes.json();
+    assert.ok(invChat.cards.some(c => c.tool === 'get_invoice_summary' && c.result?.success));
+
+    // File complaint directly via AI Tool
+    const compTool = await executeTool('file_complaint', {
+      booking_id: bookedId,
+      category: 'Delay in Service',
+      description: 'Technician 20 minute late pahucha',
+      refund_requested: false
+    }, { db, user: { id: custId, role: 'customer' } });
+    assert.equal(compTool.success, true);
+    assert.ok(compTool.ticket_id);
+
+    // Verify cancellation confirmation gate via AI Chat (first turn asks confirmation, does NOT cancel!)
+    const cancelAskRes = await fetch(`${base}/api/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'Cancel my booking' }] })
+    });
+    const cancelAsk = await cancelAskRes.json();
+    assert.equal(cancelAsk.pendingBooking.pendingAction, 'cancel');
+    const stillActive = db.sqlite.prepare('SELECT status FROM bookings WHERE id = ?').get(bookedId);
+    assert.equal(stillActive.status, 'requested');
+
+    // Confirm cancellation explicitly
+    const cancelDoRes = await fetch(`${base}/api/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'Haan confirm' }],
+        activeBookingState: cancelAsk.pendingBooking
+      })
+    });
+    const cancelDo = await cancelDoRes.json();
+    assert.ok(cancelDo.cards.some(c => c.tool === 'request_booking_cancellation' && c.result?.cancelled));
+    const afterCancel = db.sqlite.prepare('SELECT status FROM bookings WHERE id = ?').get(bookedId);
+    assert.equal(afterCancel.status, 'cancelled');
+
+    // 6. Conversation History DB Sync Check
+    const histRes = await fetch(`${base}/api/ai/history`, {
+      headers: { Authorization: `Bearer ${custToken}` }
+    });
+    assert.equal(histRes.status, 200);
+    const histData = await histRes.json();
+    assert.equal(histData.success, true);
+    assert.ok(histData.messages.length >= 6);
+
+    const delHistRes = await fetch(`${base}/api/ai/history`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${custToken}` }
+    });
+    assert.equal(delHistRes.status, 200);
+
+    const emptyHistRes = await fetch(`${base}/api/ai/history`, {
+      headers: { Authorization: `Bearer ${custToken}` }
+    });
+    const emptyHistData = await emptyHistRes.json();
+    assert.equal(emptyHistData.messages.length, 0);
+  } finally {
+    if (prevGemini !== undefined) process.env.GEMINI_API_KEY = prevGemini;
+    if (prevOpenAI !== undefined) process.env.OPENAI_API_KEY = prevOpenAI;
+    server.close();
+    await db.close();
+  }
+});
+
 
 
 

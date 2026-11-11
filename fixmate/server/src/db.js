@@ -205,6 +205,17 @@ CREATE TABLE IF NOT EXISTS complaints (
 );
 CREATE INDEX IF NOT EXISTS complaints_status_idx ON complaints(status, id DESC);
 CREATE INDEX IF NOT EXISTS complaints_customer_idx ON complaints(customer_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS ai_messages (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  cards_json TEXT,
+  provider VARCHAR(30) DEFAULT 'fixmate-ai',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ai_messages_user_idx ON ai_messages(user_id, id DESC);
 `;
 
 function getPoolConfig(customConfig = {}) {
@@ -372,6 +383,15 @@ function openMemoryDb() {
       refund_amount INTEGER DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       resolved_at TEXT
+    );
+    CREATE TABLE ai_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+      content TEXT NOT NULL,
+      cards_json TEXT,
+      provider TEXT DEFAULT 'fixmate-ai',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE wallet_tx (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
