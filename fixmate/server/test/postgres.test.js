@@ -1145,6 +1145,188 @@ test('Phase 7 Live Technician Tracking: Active-Job Privacy Guardrails, Haversine
   }
 });
 
+test('Phase 8 AMC Plans, Emergency Guardrails, 1-Click Repeat Booking, Warranty History, Family & Reminders', async () => {
+  const jwt = require('jsonwebtoken');
+  const { createApp } = require('../src/app');
+  const db = openDb(':memory:');
+  await db.initDb();
+
+  const custId = Number(db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet) VALUES ('9876542001', 'Phase8 Customer', 'customer', null, 5000)").run().lastInsertRowid);
+  const workerId = Number(db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet, online, id_verified) VALUES ('9876542002', 'Phase8 Elec Tech', 'worker', 'Electrician', 500, 1, 1)").run().lastInsertRowid);
+  const adminId = Number(db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet) VALUES ('9876542003', 'Phase8 Admin', 'admin', null, 10000)").run().lastInsertRowid);
+
+  const custToken = jwt.sign({ id: custId, tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+  const workerToken = jwt.sign({ id: workerId, tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+  const adminToken = jwt.sign({ id: adminId, tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+
+  const server = createApp(db).listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://localhost:${server.address().port}`;
+
+  try {
+    // 1. Emergency Availability Guardrail: Plumber has 0 online technicians
+    const plumbAvail = await (await fetch(`${base}/api/services/emergency-availability?cat=Plumber`)).json();
+    assert.equal(plumbAvail.available, false);
+    assert.equal(plumbAvail.online_technicians, 0);
+
+    // Attempt emergency Plumber booking -> must fail with 409 (never fake instant availability)
+    const blockedEmg = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({ serviceId: 4, slot: 'Abhi', address: 'Dhanbad', pay: 'wallet', is_emergency: 1 })
+    });
+    assert.equal(blockedEmg.status, 409);
+
+    // Electrician has 1 online worker -> available & emergency surcharge ₹99 applied
+    const elecAvail = await (await fetch(`${base}/api/services/emergency-availability?cat=Electrician`)).json();
+    assert.equal(elecAvail.available, true);
+    assert.equal(elecAvail.online_technicians, 1);
+    assert.equal(elecAvail.emergency_fee, 99);
+
+    // 2. Pincode Serviceability & Admin Control
+    const okPin = await (await fetch(`${base}/api/service-areas/check?pincode=826001`)).json();
+    assert.equal(okPin.serviceable, true);
+
+    const badPin = await (await fetch(`${base}/api/service-areas/check?pincode=999999`)).json();
+    assert.equal(badPin.serviceable, false);
+
+    const blockedPinBook = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({ serviceId: 1, slot: 'Abhi', address: 'Outside Area', pay: 'wallet', pincode: '999999' })
+    });
+    assert.equal(blockedPinBook.status, 400);
+
+    // Admin enables pincode 999999
+    const addArea = await fetch(`${base}/api/admin/service-areas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ pincode: '999999', city: 'Dhanbad', area_name: 'New Township' })
+    });
+    assert.equal(addArea.status, 201);
+
+    // 3. Family Member Account
+    const famRes = await fetch(`${base}/api/family`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({ member_name: 'Papa Ji', member_phone: '9876542999', relation: 'Parents' })
+    });
+    assert.equal(famRes.status, 201);
+    const famId = (await famRes.json()).member.id;
+    const famList = await (await fetch(`${base}/api/family`, { headers: { Authorization: `Bearer ${custToken}` } })).json();
+    assert.equal(famList.members.length, 1);
+
+    // 4. Service Maintenance Reminders
+    const remRes = await fetch(`${base}/api/reminders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({ category: 'AC Repair', title: 'Annual Jet Pump Clean', interval_months: 6 })
+    });
+    assert.equal(remRes.status, 201);
+    const remId = (await remRes.json()).reminder.id;
+    const togRes = await (await fetch(`${base}/api/reminders/${remId}/toggle`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${custToken}` }
+    })).json();
+    assert.equal(togRes.enabled, false);
+
+    // 5. AMC Plans, Subscription, Visit Redemption & Renewal
+    const plansData = await (await fetch(`${base}/api/amc/plans`)).json();
+    assert.ok(plansData.plans.length >= 4);
+    const elecPlan = plansData.plans.find((p) => p.category === 'Electrician');
+    assert.ok(elecPlan);
+
+    const subRes = await fetch(`${base}/api/amc/subscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({ plan_id: elecPlan.id, payment_method: 'wallet' })
+    });
+    assert.equal(subRes.status, 201);
+    const subId = (await subRes.json()).subscription.id;
+
+    // Book emergency Electrician redeeming AMC subscription + Family Member + Newly enabled pincode
+    const amcBookRes = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({
+        serviceId: 1,
+        slot: 'Abhi (60 min mein)',
+        address: 'Sector 2, New Township',
+        pay: 'wallet',
+        pincode: '999999',
+        is_emergency: 1,
+        family_member_name: 'Papa Ji',
+        amc_subscription_id: subId
+      })
+    });
+    assert.equal(amcBookRes.status, 201);
+    const amcBook = (await amcBookRes.json()).booking;
+    assert.equal(amcBook.emergency_fee, 99);
+    assert.equal(amcBook.family_member_name, 'Papa Ji');
+    assert.equal(amcBook.discount_amount, 149); // Base fee waived by AMC!
+
+    // Check AMC visit deducted
+    const myAmc = await (await fetch(`${base}/api/amc/my`, { headers: { Authorization: `Bearer ${custToken}` } })).json();
+    assert.equal(myAmc.subscriptions[0].visits_used, 1);
+
+    // Complete booking & check Warranty History
+    await fetch(`${base}/api/bookings/${amcBook.id}/accept`, { method: 'POST', headers: { Authorization: `Bearer ${workerToken}` } });
+    await fetch(`${base}/api/bookings/${amcBook.id}/on-the-way`, { method: 'POST', headers: { Authorization: `Bearer ${workerToken}` } });
+    await fetch(`${base}/api/bookings/${amcBook.id}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({ code: amcBook.start_code })
+    });
+    await fetch(`${base}/api/bookings/${amcBook.id}/quote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({ parts: 100, parts_desc: 'Modular Socket 16A' })
+    });
+    await fetch(`${base}/api/bookings/${amcBook.id}/approve`, { method: 'POST', headers: { Authorization: `Bearer ${custToken}` } });
+    await fetch(`${base}/api/bookings/${amcBook.id}/complete`, { method: 'POST', headers: { Authorization: `Bearer ${workerToken}` } });
+    await fetch(`${base}/api/bookings/${amcBook.id}/pay`, { method: 'POST', headers: { Authorization: `Bearer ${custToken}` } });
+
+    // Warranty History check
+    const wHist = await (await fetch(`${base}/api/bookings/warranty-history`, {
+      headers: { Authorization: `Bearer ${custToken}` }
+    })).json();
+    assert.equal(wHist.history.length, 1);
+    assert.equal(wHist.history[0].warranty_active, true);
+    assert.equal(wHist.history[0].parts_desc, 'Modular Socket 16A');
+    assert.equal(wHist.history[0].parts_warranty_days, 90);
+
+    // 6. 1-Click Repeat Booking Price Recheck (simulate admin price update first!)
+    await fetch(`${base}/api/admin/services/1`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ price: 179 })
+    });
+    const repData = await (await fetch(`${base}/api/bookings/${amcBook.id}/repeat-preview`, {
+      headers: { Authorization: `Bearer ${custToken}` }
+    })).json();
+    assert.equal(repData.price_changed, true);
+    assert.equal(repData.service.price, 179);
+    assert.equal(repData.previous_booking.family_member_name, 'Papa Ji');
+    assert.equal(repData.availability.available, true);
+
+    // Renew AMC subscription & cleanup checks
+    const renewRes = await fetch(`${base}/api/amc/${subId}/renew`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({ payment_method: 'wallet' })
+    });
+    assert.equal(renewRes.status, 200);
+    assert.equal((await renewRes.json()).subscription.visits_used, 0);
+
+    await fetch(`${base}/api/family/${famId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${custToken}` } });
+    await fetch(`${base}/api/reminders/${remId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${custToken}` } });
+  } finally {
+    server.close();
+    await db.close();
+  }
+});
+
+
 
 
 

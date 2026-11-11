@@ -148,6 +148,15 @@ let S = {
   trackingPollTimer: null,
   wkSharingBookingId: null,
   wkWatchId: null,
+  amcPlans: [],
+  myAmcSubs: [],
+  selectedAmcSubId: null,
+  familyMembers: [],
+  selectedFamilyMember: '',
+  reminders: [],
+  warrantyHistory: [],
+  emergencyAvail: null,
+  pincodeCheckResult: null,
   user: null,
   lg: { step: 0, ph: '', otp: '', tries: 0, exp: 0, rs: 0 }
 };
@@ -552,11 +561,26 @@ function home() {
   <div id="gr" class="grid">${grid(fl())}</div>`;
 }
 
+async function checkEmergencyForService(cat) {
+  try {
+    const res = await api('GET', `/services/emergency-availability?cat=${encodeURIComponent(cat)}`);
+    S.emergencyAvail = res;
+    if (S.scr === 'book') render();
+  } catch (e) {
+    S.emergencyAvail = null;
+  }
+}
+
 function toggleEmergency() {
   S.emergency = !S.emergency;
   if (S.emergency) S.cat = 'Sab';
+  S.emergencyAvail = null;
+  if (S.emergency && S.scr === 'book') {
+    const x = SV[S.sv] || SV[0];
+    checkEmergencyForService(x.c);
+  }
   render();
-  toast(S.emergency ? 'Emergency mode on: Urgent services dikhaye ja rahe hain' : 'Normal mode active');
+  toast(S.emergency ? 'Emergency mode on: Live availability & ₹99 express fee active' : 'Normal mode active');
 }
 
 function copyCoupon(code) {
@@ -573,7 +597,11 @@ function pick(i) {
   S.bookingIssue = '';
   S.bookingPhoto = '';
   S.appliedCoupon = null;
+  S.selectedAmcSubId = null;
+  S.selectedFamilyMember = '';
+  S.emergencyAvail = null;
   S.scr = 'book';
+  if (S.emergency && SV[i]) checkEmergencyForService(SV[i].c);
   render();
   scrollTo(0, 0);
 }
@@ -626,8 +654,12 @@ function book() {
   const x = SV[S.sv] || SV[0];
   const isTutor = x.c === 'Home Tutor';
   const sl = isTutor ? TS : SL;
-  const discount = S.appliedCoupon ? S.appliedCoupon.discount_amount : 0;
-  const estimatedTotal = Math.max(0, x.p - discount);
+  const matchingAmc = (S.myAmcSubs || []).find((s) => s.status === 'active' && s.category === x.c && Number(s.visits_remaining) > 0);
+  const useAmc = Boolean(S.selectedAmcSubId && matchingAmc && S.selectedAmcSubId === matchingAmc.id);
+  const emergencyFee = S.emergency ? 99 : 0;
+  const discount = useAmc ? x.p : (S.appliedCoupon ? S.appliedCoupon.discount_amount : 0);
+  const estimatedTotal = Math.max(0, x.p + emergencyFee - discount);
+  const avail = S.emergencyAvail;
 
   return `<button class="back" onclick="go('home')">← Wapas Home Pe</button>
 
@@ -641,8 +673,22 @@ function book() {
   </div>
 
   ${S.emergency ? `
-    <div class="badge" style="background:#FEE2E2;color:#DC2626;padding:10px 14px;font-size:13px;margin:12px 0;display:block">
-      🚨 <b>Emergency Priority Booking</b>: Technician 60 minute mein aapke address par dispatch hoga.
+    <div class="badge" style="background:${avail && !avail.available ? '#FEF3C7' : '#FEE2E2'};color:${avail && !avail.available ? '#92400E' : '#DC2626'};padding:10px 14px;font-size:12.5px;margin:12px 0;display:block;line-height:1.4">
+      ${avail
+        ? (avail.available
+            ? `🚨 <b>Emergency Confirmed Available:</b> ${avail.online_technicians} verified technician(s) abhi online hain! Express fee: <b>₹99</b>.`
+            : `⚠️ <b>No Emergency Tech Online:</b> Abhi ${esc(x.c)} mein koi technician online nahi hai. Kripya normal slot chunein ya Emergency off karein.`)
+        : '🚨 <b>Emergency Priority Mode:</b> Live technician availability check ki ja rahi hai (₹99 express fee).'}
+    </div>
+  ` : ''}
+
+  ${matchingAmc ? `
+    <div class="card row" style="border-color:var(--teal);background:rgba(0,106,96,0.06);margin:10px 0;cursor:pointer" onclick="S.selectedAmcSubId=${useAmc ? 'null' : matchingAmc.id};render()">
+      <div>
+        <b style="color:var(--teal)">🛡️ Active AMC Plan: ${esc(matchingAmc.plan_name)}</b>
+        <div class="mut" style="font-size:12px">${matchingAmc.visits_remaining} free visit(s) remaining</div>
+      </div>
+      <input type="checkbox" ${useAmc ? 'checked' : ''} style="width:auto;margin:0;pointer-events:none">
     </div>
   ` : ''}
 
@@ -670,6 +716,18 @@ function book() {
       <button class="chip ${S.slot === i ? 'on' : ''}" onclick="S.slot=${i};render()">${s}</button>
     `).join('')}
   </div>
+
+  ${S.familyMembers && S.familyMembers.length ? `
+    <h2>Kis ke liye book kar rahe hain?</h2>
+    <div class="chips" style="margin-bottom:8px">
+      <button class="chip ${!S.selectedFamilyMember ? 'on' : ''}" onclick="S.selectedFamilyMember='';render()">👤 Myself</button>
+      ${S.familyMembers.map((m) => `
+        <button class="chip ${S.selectedFamilyMember === m.member_name ? 'on' : ''}" onclick="S.selectedFamilyMember='${esc(m.member_name)}';render()">
+          👨‍👩‍👧 ${esc(m.member_name)} (${esc(m.relation)})
+        </button>
+      `).join('')}
+    </div>
+  ` : ''}
 
   <h2>Address</h2>
   ${S.addresses.length ? `
@@ -717,9 +775,15 @@ function book() {
       <span>Service Base Labor</span>
       <span>${isTutor ? 'Free Demo' : inr(x.p)}</span>
     </div>
+    ${emergencyFee > 0 ? `
+      <div class="price-line" style="color:#DC2626">
+        <span>Priority Emergency Dispatch Fee</span>
+        <span>+${inr(emergencyFee)}</span>
+      </div>
+    ` : ''}
     ${discount > 0 ? `
       <div class="price-line" style="color:var(--ok);font-weight:700">
-        <span>Coupon Discount (${esc(S.appliedCoupon.code)})</span>
+        <span>${useAmc ? `AMC Benefit (${esc(matchingAmc.plan_name)})` : `Coupon Discount (${esc(S.appliedCoupon.code)})`}</span>
         <span>-${inr(discount)}</span>
       </div>
     ` : ''}
@@ -769,8 +833,12 @@ function doBook() {
       discount_amount: discountAmount,
       is_emergency: S.emergency ? 1 : 0,
       customer_lat: S.customerLat,
-      customer_lng: S.customerLng
+      customer_lng: S.customerLng,
+      family_member_name: S.selectedFamilyMember || null,
+      amc_subscription_id: S.selectedAmcSubId || null
     });
+    S.selectedAmcSubId = null;
+    S.selectedFamilyMember = '';
     await refresh();
     S.scr = 'bk';
     render();
@@ -898,11 +966,16 @@ function bkc(b) {
       </div>
     ` : ''}
 
-    <!-- Digital Invoice & Receipt Button -->
-    ${(b.status === 'completed' || b.status === 'closed') ? `
-      <div class="row" style="margin-top:10px">
-        <button class="btn sm ghost" style="width:100%;font-weight:700;color:var(--teal);border-color:var(--teal)" onclick="openInvoiceModal(${b.id})">
-          📄 View Digital Invoice & 30-Day Warranty
+    <!-- Digital Invoice & Receipt + 1-Click Repeat Booking -->
+    ${(b.status === 'completed' || b.status === 'closed' || isCan) ? `
+      <div class="row" style="margin-top:10px;gap:8px">
+        ${(b.status === 'completed' || b.status === 'closed') ? `
+          <button class="btn sm ghost" style="flex:1.4;font-weight:700;color:var(--teal);border-color:var(--teal)" onclick="openInvoiceModal(${b.id})">
+            📄 Digital Invoice
+          </button>
+        ` : ''}
+        <button class="btn sm acc" style="flex:1" onclick="repeatBooking(${b.id})">
+          🔁 Book Again
         </button>
       </div>
     ` : ''}
@@ -977,6 +1050,34 @@ function pf() {
       <div class="mut">+91 ${esc(u.phone)} • ${esc(u.role)}</div>
     </div>
   </div>
+
+  <!-- Phase 8 Services & Account Hub -->
+  <h2 style="margin-top:18px">Protection, Plans & Family</h2>
+  <div class="hub-grid">
+    <button class="hub-tile" onclick="openAmcModal()">
+      <span style="font-size:20px">🛡️</span>
+      <b>AMC Annual Plans</b>
+      <span class="mut">${(S.myAmcSubs || []).filter((x) => x.status === 'active').length} Active Plan(s)</span>
+    </button>
+    <button class="hub-tile" onclick="openWarrantyModal()">
+      <span style="font-size:20px">📜</span>
+      <b>Service Warranty</b>
+      <span class="mut">History & Coverage</span>
+    </button>
+    <button class="hub-tile" onclick="openFamilyModal()">
+      <span style="font-size:20px">👨‍👩‍👧</span>
+      <b>Family Accounts</b>
+      <span class="mut">${(S.familyMembers || []).length} Member(s)</span>
+    </button>
+    <button class="hub-tile" onclick="openRemindersModal()">
+      <span style="font-size:20px">⏰</span>
+      <b>Service Reminders</b>
+      <span class="mut">${(S.reminders || []).filter((r) => r.enabled).length} Scheduled</span>
+    </button>
+  </div>
+  <button class="btn sm ghost" style="margin-top:8px" onclick="openPincodeModal()">
+    📍 Check Serviceable Pincode Area (Dhanbad)
+  </button>
 
   <div class="row" style="margin-top:20px">
     <h2 style="margin:0">Saved Addresses</h2>
@@ -1973,6 +2074,165 @@ function renderModal() {
     </div>`;
   }
 
+  if (S.modal === 'amc') {
+    const subs = S.myAmcSubs || [];
+    const plans = S.amcPlans || [];
+    return `<div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">
+        <div class="modal-header">
+          <h3>🛡️ Annual Maintenance Plans</h3>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+
+        ${subs.length ? `
+          <div style="font-weight:800;font-size:13px;margin-bottom:6px;color:var(--teal)">Active Subscriptions</div>
+          ${subs.map((s) => `
+            <div class="card" style="border-color:var(--teal);background:rgba(0,106,96,0.04);margin-bottom:10px;padding:12px">
+              <div class="row">
+                <b>${esc(s.plan_name)}</b>
+                <span class="badge ok">${s.visits_remaining}/${s.visits_total} Visits Left</span>
+              </div>
+              <div class="mut" style="font-size:11.5px;margin-top:4px">
+                Valid until: <b>${new Date(s.end_date).toLocaleDateString('en-IN')}</b> (${s.days_left} days left)
+              </div>
+              ${s.needs_renewal ? `<button class="btn sm acc" style="margin-top:8px" onclick="renewAmcPlan(${s.id})">🔄 Renew AMC Plan</button>` : ''}
+            </div>
+          `).join('')}
+        ` : ''}
+
+        <div style="font-weight:800;font-size:13px;margin:10px 0 6px">Available AMC Plans</div>
+        ${plans.length ? plans.map((p) => `
+          <div class="card" style="margin-bottom:10px;padding:12px">
+            <div class="row">
+              <div>
+                <b>${esc(p.name)}</b>
+                <div class="mut" style="font-size:11.5px">${esc(p.category)} · ${p.validity_months} Months · ${p.visits_included} Visits</div>
+              </div>
+              <b style="font-size:16px;color:var(--teal)">${inr(p.price)}</b>
+            </div>
+            <div style="font-size:11.5px;margin-top:8px;color:var(--ok)"><b>✅ Includes:</b> ${esc(p.inclusions)}</div>
+            <div style="font-size:11.5px;margin-top:4px;color:var(--mut)"><b>❌ Excludes:</b> ${esc(p.exclusions)}</div>
+            <button class="btn sm acc" style="margin-top:10px" onclick="subscribeAmcPlan(${p.id}, '${esc(p.name)}', ${p.price})">
+              Subscribe via Wallet (${inr(p.price)})
+            </button>
+          </div>
+        `).join('') : '<div class="card mut">Loading AMC plans...</div>'}
+      </div>
+    </div>`;
+  }
+
+  if (S.modal === 'warranty') {
+    const hist = S.warrantyHistory || [];
+    return `<div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">
+        <div class="modal-header">
+          <h3>📜 Service History & Warranty</h3>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        ${hist.length ? hist.map((h) => `
+          <div class="card" style="margin-bottom:10px;padding:12px;border-color:${h.warranty_active ? 'var(--teal)' : 'var(--bd)'}">
+            <div class="row">
+              <b>#${h.booking_id} ${esc(h.service)}</b>
+              <span class="badge ${h.warranty_active ? 'ok' : ''}">${h.warranty_active ? '🛡️ Under Warranty' : 'Expired / N/A'}</span>
+            </div>
+            <div class="mut" style="font-size:12px;margin-top:4px">
+              Completed: ${new Date(h.completed_at).toLocaleDateString('en-IN')} · Tech: <b>${esc(h.technician_name)}</b>
+            </div>
+            ${h.parts_desc ? `<div style="font-size:12px;margin-top:4px">🔧 Parts Replaced: <b>${esc(h.parts_desc)}</b> (${inr(h.parts_cost)})</div>` : ''}
+            <div class="mut" style="font-size:11.5px;margin-top:4px">${esc(h.warranty_terms)}</div>
+            <div class="row" style="margin-top:8px">
+              <button class="btn sm ghost" style="flex:1" onclick="openInvoiceModal(${h.booking_id})">📄 Invoice</button>
+              <button class="btn sm acc" style="flex:1" onclick="repeatBooking(${h.booking_id})">🔁 Rebook</button>
+            </div>
+          </div>
+        `).join('') : '<div class="card mut" style="text-align:center;padding:24px">Abhi koi completed service warranty record nahi hai.</div>'}
+      </div>
+    </div>`;
+  }
+
+  if (S.modal === 'family') {
+    const list = S.familyMembers || [];
+    return `<div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">
+        <div class="modal-header">
+          <h3>👨‍👩‍👧 Family Members</h3>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        ${list.length ? list.map((m) => `
+          <div class="card row" style="margin-bottom:8px;padding:10px 12px">
+            <div>
+              <b>${esc(m.member_name)}</b> <span class="badge">${esc(m.relation)}</span>
+              <div class="mut" style="font-size:12px">+91 ${esc(m.member_phone)} · Booking permitted</div>
+            </div>
+            <button class="btn sm ghost" style="width:auto;padding:4px 10px;color:var(--bad)" onclick="deleteFamilyMember(${m.id})">${ic('trash', 14)}</button>
+          </div>
+        `).join('') : '<div class="card mut" style="margin-bottom:12px">Koi family member add nahi hai.</div>'}
+        <div style="font-weight:700;font-size:13px;margin:10px 0 6px">+ Add Family Member</div>
+        <input id="fam-name" placeholder="Name (e.g. Maa / Papa)" style="margin-bottom:8px">
+        <input id="fam-phone" type="tel" maxlength="10" placeholder="10-digit Phone Number" style="margin-bottom:8px">
+        <input id="fam-rel" placeholder="Relation (Parents, Spouse, Sibling)" value="Parents" style="margin-bottom:12px">
+        <button class="btn acc" onclick="saveFamilyMember()">Member Jodein</button>
+      </div>
+    </div>`;
+  }
+
+  if (S.modal === 'reminders') {
+    const list = S.reminders || [];
+    return `<div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">
+        <div class="modal-header">
+          <h3>⏰ Maintenance Reminders</h3>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        ${list.length ? list.map((r) => `
+          <div class="card row" style="margin-bottom:8px;padding:10px 12px">
+            <div>
+              <b>${esc(r.title)}</b>
+              <div class="mut" style="font-size:11.5px">${esc(r.category)} · Every ${r.interval_months} mo · Due: ${new Date(r.next_due_date).toLocaleDateString('en-IN')}</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn sm ${r.enabled ? 'acc' : 'ghost'}" style="width:auto;padding:4px 10px;font-size:11px" onclick="toggleReminder(${r.id})">${r.enabled ? 'ON' : 'OFF'}</button>
+              <button class="btn sm ghost" style="width:auto;padding:4px 8px;color:var(--bad)" onclick="deleteReminder(${r.id})">${ic('trash', 14)}</button>
+            </div>
+          </div>
+        `).join('') : '<div class="card mut" style="margin-bottom:12px">Abhi koi reminder set nahi hai.</div>'}
+        <div style="font-weight:700;font-size:13px;margin:10px 0 6px">+ New Reminder</div>
+        <select id="rem-cat" style="margin-bottom:8px;padding:10px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
+          <option value="AC Repair">AC Repair (Seasonal Servicing)</option>
+          <option value="RO & Water Purifier">RO Filter Replacement</option>
+          <option value="Washing Machine">Washing Machine Care</option>
+          <option value="Electrician">Electrical Safety Check</option>
+        </select>
+        <input id="rem-title" placeholder="Title (e.g. Summer Split AC Jet Wash)" style="margin-bottom:8px">
+        <input id="rem-int" type="number" min="1" max="24" value="6" placeholder="Repeat every (months)" style="margin-bottom:12px">
+        <button class="btn acc" onclick="saveReminder()">Reminder Set Karein</button>
+      </div>
+    </div>`;
+  }
+
+  if (S.modal === 'pincode') {
+    const chk = S.pincodeCheckResult;
+    return `<div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-sheet" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h3>📍 Service Area Checker</h3>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <div class="mut" style="font-size:12.5px;margin-bottom:10px">Dhanbad mein apna 6-digit pincode daal kar service availability check karein:</div>
+        <div class="row" style="gap:8px;margin-bottom:12px">
+          <input id="pin-check-input" type="tel" maxlength="6" placeholder="e.g. 826001" style="margin:0;flex:1">
+          <button class="btn sm acc" style="width:auto;padding:12px 16px" onclick="checkPincodeServiceability()">Check</button>
+        </div>
+        ${chk ? `
+          <div class="card" style="background:${chk.serviceable ? 'rgba(47,158,122,0.08)' : '#FEE2E2'};border-color:${chk.serviceable ? 'var(--teal)' : '#DC2626'};padding:10px 12px;font-size:13px">
+            <b>${chk.serviceable ? '✅ Service Available!' : '❌ Not Yet Serviceable'}</b><br>
+            ${esc(chk.message)}
+          </div>
+        ` : ''}
+      </div>
+    </div>`;
+  }
+
   return '';
 }
 
@@ -2408,6 +2668,165 @@ async function markAllNotificationsRead() {
     render();
     toast('Sabhi notifications padhe gaye');
   } catch (e) {}
+}
+
+/* ========================================================
+   PHASE 8: AMC PLANS, REPEAT BOOKING, FAMILY, REMINDERS & WARRANTY
+   ======================================================== */
+async function repeatBooking(bookingId) {
+  try {
+    const res = await api('GET', `/bookings/${bookingId}/repeat-preview`);
+    const idx = SV.findIndex((s) => s.id === res.service.id || s.n === res.service.name);
+    if (idx < 0) {
+      toast('Service catalog mein nahi mili');
+      return;
+    }
+    SV[idx].p = res.service.price;
+    S.sv = idx;
+    S.ad = res.previous_booking.address || S.ad;
+    S.bookingIssue = res.previous_booking.issue_desc || '';
+    S.selectedFamilyMember = res.previous_booking.family_member_name || '';
+    S.pay = res.previous_booking.pay || 'wallet';
+    S.appliedCoupon = null;
+    S.selectedAmcSubId = null;
+    S.modal = null;
+    S.scr = 'book';
+    render();
+    scrollTo(0, 0);
+    const note = res.price_changed ? `Live updated price: ${inr(res.service.price)}. ` : '';
+    const techNote = res.availability.available ? `${res.availability.online_technicians} tech(s) online.` : 'Schedule later slot.';
+    toast(`🔁 Pre-filled! ${note}${techNote}`);
+  } catch (err) {
+    toast(err.message || 'Repeat booking fail hui');
+  }
+}
+
+async function openAmcModal() {
+  try {
+    const [plansRes, myRes] = await Promise.all([
+      api('GET', '/amc/plans'),
+      api('GET', '/amc/my').catch(() => ({ subscriptions: [] }))
+    ]);
+    S.amcPlans = plansRes.plans || [];
+    S.myAmcSubs = myRes.subscriptions || [];
+  } catch (e) {}
+  S.modal = 'amc';
+  render();
+}
+
+function subscribeAmcPlan(planId, name, price) {
+  if (!confirm(`Confirm subscription to "${name}" for ${inr(price)} from FixMate Wallet?`)) return;
+  act(async () => {
+    const res = await api('POST', '/amc/subscribe', { plan_id: planId, payment_method: 'wallet' });
+    await refresh();
+    await openAmcModal();
+    toast(res.message);
+  });
+}
+
+function renewAmcPlan(subId) {
+  act(async () => {
+    const res = await api('POST', `/amc/${subId}/renew`, { payment_method: 'wallet' });
+    await refresh();
+    await openAmcModal();
+    toast(res.message);
+  });
+}
+
+async function openWarrantyModal() {
+  try {
+    const res = await api('GET', '/bookings/warranty-history');
+    S.warrantyHistory = res.history || [];
+  } catch (e) {}
+  S.modal = 'warranty';
+  render();
+}
+
+async function openFamilyModal() {
+  try {
+    const res = await api('GET', '/family');
+    S.familyMembers = res.members || [];
+  } catch (e) {}
+  S.modal = 'family';
+  render();
+}
+
+function saveFamilyMember() {
+  const member_name = ($('fam-name')?.value || '').trim();
+  const member_phone = ($('fam-phone')?.value || '').trim();
+  const relation = ($('fam-rel')?.value || 'Family').trim();
+  if (member_name.length < 2) { toast('Member ka naam likhein'); return; }
+  if (!/^[6-9]\d{9}$/.test(member_phone)) { toast('Valid 10-digit mobile number daalein'); return; }
+
+  act(async () => {
+    await api('POST', '/family', { member_name, member_phone, relation });
+    await openFamilyModal();
+    toast('Family member add ho gaya!');
+  });
+}
+
+function deleteFamilyMember(id) {
+  act(async () => {
+    await api('DELETE', `/family/${id}`);
+    await openFamilyModal();
+    toast('Member hataya gaya');
+  });
+}
+
+async function openRemindersModal() {
+  try {
+    const res = await api('GET', '/reminders');
+    S.reminders = res.reminders || [];
+  } catch (e) {}
+  S.modal = 'reminders';
+  render();
+}
+
+function saveReminder() {
+  const category = $('rem-cat')?.value || 'AC Repair';
+  const title = ($('rem-title')?.value || '').trim();
+  const interval_months = +$('rem-int')?.value || 6;
+  if (title.length < 3) { toast('Reminder title likhein'); return; }
+
+  act(async () => {
+    await api('POST', '/reminders', { category, title, interval_months });
+    await openRemindersModal();
+    toast('Reminder save ho gaya!');
+  });
+}
+
+function toggleReminder(id) {
+  act(async () => {
+    const res = await api('PUT', `/reminders/${id}/toggle`, {});
+    await openRemindersModal();
+    toast(res.message);
+  });
+}
+
+function deleteReminder(id) {
+  act(async () => {
+    await api('DELETE', `/reminders/${id}`);
+    await openRemindersModal();
+    toast('Reminder delete ho gaya');
+  });
+}
+
+function openPincodeModal() {
+  S.pincodeCheckResult = null;
+  S.modal = 'pincode';
+  render();
+}
+
+async function checkPincodeServiceability() {
+  const pin = ($('pin-check-input')?.value || '').trim();
+  if (!/^\d{6}$/.test(pin)) { toast('Valid 6-digit pincode daalein'); return; }
+  try {
+    const res = await api('GET', `/service-areas/check?pincode=${encodeURIComponent(pin)}`);
+    S.pincodeCheckResult = res;
+    render();
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
 /* ========================================================
@@ -2900,13 +3319,16 @@ async function refresh() {
       if (statsRes && statsRes.stats) S.wkStats = statsRes.stats;
       if (reviewsRes && reviewsRes.reviews) S.wkReviews = reviewsRes.reviews;
     } else {
-      const [w, b, addrRes, cpnRes, compRes, notifRes] = await Promise.all([
+      const [w, b, addrRes, cpnRes, compRes, notifRes, amcRes, famRes, remRes] = await Promise.all([
         api('GET', '/wallet'),
         api('GET', '/bookings'),
         api('GET', '/addresses').catch(() => ({ addresses: [] })),
         api('GET', '/coupons').catch(() => ({ coupons: [] })),
         api('GET', '/complaints/my').catch(() => ({ complaints: [] })),
-        api('GET', '/notifications').catch(() => ({ notifications: [], unread_count: 0 }))
+        api('GET', '/notifications').catch(() => ({ notifications: [], unread_count: 0 })),
+        api('GET', '/amc/my').catch(() => ({ subscriptions: [] })),
+        api('GET', '/family').catch(() => ({ members: [] })),
+        api('GET', '/reminders').catch(() => ({ reminders: [] }))
       ]);
       S.w = w.balance;
       S.tx = w.transactions.map((t) => [t.label, t.amount]);
@@ -2916,6 +3338,9 @@ async function refresh() {
       S.myComplaints = compRes.complaints || [];
       S.notifications = notifRes.notifications || [];
       S.unreadNotifications = notifRes.unread_count || 0;
+      S.myAmcSubs = amcRes.subscriptions || [];
+      S.familyMembers = famRes.members || [];
+      S.reminders = remRes.reminders || [];
 
       // Auto-select default address if none chosen
       if (!S.ad && S.addresses.length) {

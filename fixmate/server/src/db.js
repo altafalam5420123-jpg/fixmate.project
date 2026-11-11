@@ -36,6 +36,21 @@ const SERVICES = [
   ['Home Tutor', 'English aur coding basics', 1200, 4.8],
 ];
 
+const DEFAULT_AMC_PLANS = [
+  ['Split/Window AC Annual Shield', 'AC Repair', 12, 1499, 3, '3 Jet Pump Services, Coil Cleaning, Gas Pressure Check, Free Visiting Charge', 'Compressor replacement, copper pipe extensions, gas refill charges'],
+  ['Washing Machine Care AMC', 'Washing Machine', 12, 999, 2, '2 Preventive Drain & Drum Cleanings, Sensor Check, Zero Visit Fee', 'PCB board replacement, outer tub physical damage'],
+  ['RO Water Purifier Annual Plan', 'RO & Water Purifier', 12, 1299, 3, '2 Periodic Checkups + Sediment/Carbon Filter Cleaning, TDS Calibration', 'RO Membrane & Booster Pump cost (15% member discount applies)'],
+  ['Home Electrical & Plumbing Protect', 'Electrician', 12, 899, 4, '4 Emergency Checkup Visits, MCB & Wiring Safety Audit, Zero Visit Charge', 'Major concealed rewiring, bathroom tiles dismantling']
+];
+
+const DEFAULT_SERVICE_AREAS = [
+  ['826001', 'Dhanbad', 'Bank More / Saraidhela / Court More'],
+  ['826004', 'Dhanbad', 'Bartand / Hirapur / Police Line'],
+  ['826005', 'Dhanbad', 'Jharia / Bhuli / Katras Road'],
+  ['828109', 'Dhanbad', 'Govindpur / ISM Campus Area'],
+  ['828111', 'Dhanbad', 'Sindri / Baliapur Area']
+];
+
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
@@ -230,6 +245,69 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id, id DESC);
+
+-- Phase 8 Tables: AMC Plans, Subscriptions, Family Accounts, Service Reminders & Service Areas
+CREATE TABLE IF NOT EXISTS amc_plans (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(150) NOT NULL UNIQUE,
+  category VARCHAR(80) NOT NULL,
+  description TEXT,
+  validity_months INTEGER NOT NULL DEFAULT 12 CHECK (validity_months > 0),
+  price INTEGER NOT NULL CHECK (price > 0),
+  visits_included INTEGER NOT NULL DEFAULT 2 CHECK (visits_included > 0),
+  inclusions TEXT,
+  exclusions TEXT,
+  is_active SMALLINT NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS amc_subscriptions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  plan_id INTEGER NOT NULL REFERENCES amc_plans(id),
+  status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'cancelled')),
+  visits_used INTEGER NOT NULL DEFAULT 0 CHECK (visits_used >= 0),
+  visits_total INTEGER NOT NULL CHECK (visits_total > 0),
+  start_date TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  end_date TIMESTAMPTZ NOT NULL,
+  price_paid INTEGER NOT NULL CHECK (price_paid >= 0),
+  payment_method VARCHAR(20) NOT NULL DEFAULT 'wallet',
+  auto_renew SMALLINT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS amc_sub_user_idx ON amc_subscriptions(user_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS family_members (
+  id SERIAL PRIMARY KEY,
+  owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  member_name VARCHAR(100) NOT NULL,
+  member_phone VARCHAR(20) NOT NULL,
+  relation VARCHAR(50) NOT NULL DEFAULT 'Family',
+  can_book SMALLINT NOT NULL DEFAULT 1 CHECK (can_book IN (0, 1)),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS family_owner_idx ON family_members(owner_user_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS service_reminders (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category VARCHAR(80) NOT NULL,
+  title VARCHAR(150) NOT NULL,
+  interval_months INTEGER NOT NULL DEFAULT 6 CHECK (interval_months > 0),
+  next_due_date TIMESTAMPTZ NOT NULL,
+  enabled SMALLINT NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS reminders_user_idx ON service_reminders(user_id, next_due_date ASC);
+
+CREATE TABLE IF NOT EXISTS service_areas (
+  id SERIAL PRIMARY KEY,
+  pincode VARCHAR(10) NOT NULL UNIQUE,
+  city VARCHAR(100) NOT NULL DEFAULT 'Dhanbad',
+  area_name VARCHAR(150) NOT NULL,
+  is_active SMALLINT NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 function getPoolConfig(customConfig = {}) {
@@ -334,6 +412,9 @@ function openMemoryDb() {
       tracking_active INTEGER DEFAULT 0,
       eta_minutes INTEGER,
       location_updated_at TEXT,
+      emergency_fee INTEGER DEFAULT 0,
+      family_member_name TEXT,
+      amc_subscription_id INTEGER,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE categories (
@@ -456,10 +537,70 @@ function openMemoryDb() {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
+    CREATE TABLE amc_plans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      category TEXT NOT NULL,
+      description TEXT,
+      validity_months INTEGER NOT NULL DEFAULT 12,
+      price INTEGER NOT NULL,
+      visits_included INTEGER NOT NULL DEFAULT 2,
+      inclusions TEXT,
+      exclusions TEXT,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE amc_subscriptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      plan_id INTEGER NOT NULL REFERENCES amc_plans(id),
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'cancelled')),
+      visits_used INTEGER NOT NULL DEFAULT 0,
+      visits_total INTEGER NOT NULL,
+      start_date TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      end_date TEXT NOT NULL,
+      price_paid INTEGER NOT NULL,
+      payment_method TEXT NOT NULL DEFAULT 'wallet',
+      auto_renew INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE family_members (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      member_name TEXT NOT NULL,
+      member_phone TEXT NOT NULL,
+      relation TEXT NOT NULL DEFAULT 'Family',
+      can_book INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE service_reminders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      category TEXT NOT NULL,
+      title TEXT NOT NULL,
+      interval_months INTEGER NOT NULL DEFAULT 6,
+      next_due_date TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE service_areas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pincode TEXT NOT NULL UNIQUE,
+      city TEXT NOT NULL DEFAULT 'Dhanbad',
+      area_name TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   const seed = sqlite.prepare('INSERT OR IGNORE INTO services (id, cat, name, price, rating) VALUES (?, ?, ?, ?, ?)');
   SERVICES.forEach((service, index) => seed.run(index + 1, ...service));
+
+  const seedAmc = sqlite.prepare('INSERT OR IGNORE INTO amc_plans (id, name, category, validity_months, price, visits_included, inclusions, exclusions) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  DEFAULT_AMC_PLANS.forEach((p, idx) => seedAmc.run(idx + 1, ...p));
+
+  const seedArea = sqlite.prepare('INSERT OR IGNORE INTO service_areas (pincode, city, area_name) VALUES (?, ?, ?)');
+  DEFAULT_SERVICE_AREAS.forEach((a) => seedArea.run(...a));
 
   const runQuery = (sql, params = []) => {
     let cleanSql = sql
@@ -619,6 +760,9 @@ function openDb(config = {}) {
             ALTER TABLE bookings ADD COLUMN IF NOT EXISTS tracking_active SMALLINT DEFAULT 0;
             ALTER TABLE bookings ADD COLUMN IF NOT EXISTS eta_minutes INTEGER;
             ALTER TABLE bookings ADD COLUMN IF NOT EXISTS location_updated_at TIMESTAMPTZ;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS emergency_fee INTEGER DEFAULT 0;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS family_member_name VARCHAR(100);
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS amc_subscription_id INTEGER;
 
             ALTER TABLE users ADD COLUMN IF NOT EXISTS experience_years INTEGER DEFAULT 2;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS id_document_url TEXT;
@@ -630,6 +774,9 @@ function openDb(config = {}) {
             ALTER TABLE notifications ADD COLUMN IF NOT EXISTS data_json TEXT;
             DROP INDEX IF EXISTS notifications_dedupe_idx;
             CREATE UNIQUE INDEX IF NOT EXISTS notifications_user_dedupe_uidx ON notifications(user_id, dedupe_key);
+
+            ALTER TABLE amc_plans ADD COLUMN IF NOT EXISTS inclusions TEXT;
+            ALTER TABLE amc_plans ADD COLUMN IF NOT EXISTS exclusions TEXT;
           `);
         } catch (colErr) {
           console.warn('[PostgreSQL Init Notice] Column migration:', colErr.message);
@@ -662,6 +809,35 @@ function openDb(config = {}) {
           `);
         } catch (adminErr) {
           console.warn('[PostgreSQL Init Notice] Admin seed:', adminErr.message);
+        }
+
+        // Seed AMC Plans if empty
+        try {
+          const amcCnt = await this.queryOne('SELECT COUNT(*) AS c FROM amc_plans');
+          if (Number(amcCnt.c) === 0) {
+            for (const p of DEFAULT_AMC_PLANS) {
+              const exists = await this.queryOne('SELECT id FROM amc_plans WHERE name = $1', [p[0]]);
+              if (!exists) {
+                await this.query(
+                  `INSERT INTO amc_plans (name, category, validity_months, price, visits_included, inclusions, exclusions)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                  p
+                );
+              }
+            }
+          }
+          const areaCnt = await this.queryOne('SELECT COUNT(*) AS c FROM service_areas');
+          if (Number(areaCnt.c) === 0) {
+            for (const a of DEFAULT_SERVICE_AREAS) {
+              await this.query(
+                `INSERT INTO service_areas (pincode, city, area_name)
+                 VALUES ($1, $2, $3) ON CONFLICT (pincode) DO NOTHING`,
+                a
+              );
+            }
+          }
+        } catch (seedErr) {
+          console.warn('[PostgreSQL Init Notice] Phase 8 seeds:', seedErr.message);
         }
 
         return true;

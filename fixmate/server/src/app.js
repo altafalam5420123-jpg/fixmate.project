@@ -13,6 +13,7 @@ const { smartFindService } = require('./aiService');
 
 const COMMISSION = 0.15; // platform cut from worker earnings
 const VISIT_FEE = 99; // charged if customer rejects the quote
+const EMERGENCY_FEE = 99; // transparent priority surcharge for live emergency bookings
 const CASHBACK = 0.05;
 const OTP_TTL = 60_000, OTP_RESEND = 20_000, OTP_MAX_TRIES = 3;
 const OTP_WINDOW = 60 * 60_000, OTP_PHONE_SEND_MAX = 5, OTP_PHONE_WRONG_MAX = 10;
@@ -653,16 +654,57 @@ function createApp(db = openDb()) {
   };
 
   app.post('/api/bookings', auth('customer'), h(async (req, res) => {
-    const { serviceId, slot, address, pay, issue_desc, photo_url, coupon_code, discount_amount, is_emergency, customer_lat, customer_lng } = req.body;
-    const s = (await db.queryOne('SELECT id, price FROM services WHERE id = $1', [+serviceId])) || bad(400, 'Service nahi mili');
+    const {
+      serviceId, slot, address, pay, issue_desc, photo_url,
+      coupon_code, discount_amount, is_emergency, customer_lat, customer_lng,
+      pincode, family_member_name, amc_subscription_id
+    } = req.body;
+    const s = (await db.queryOne('SELECT id, cat, name, price FROM services WHERE id = $1', [+serviceId])) || bad(400, 'Service nahi mili');
     if (!String(slot || '').trim() || !String(address || '').trim()) bad(400, 'Slot aur address zaruri hain');
     if (!['wallet', 'cash', 'razorpay'].includes(pay)) bad(400, 'Payment wallet, cash ya online hona chahiye');
+
+    // Optional Pincode Serviceability check (Section 21)
+    if (pincode && String(pincode).trim()) {
+      const cleanPin = String(pincode).trim();
+      const area = await db.queryOne('SELECT * FROM service_areas WHERE pincode = $1 AND is_active = 1', [cleanPin]);
+      if (!area) bad(400, `Pincode ${cleanPin} abhi FixMate service zone mein nahi hai`);
+    }
+
+    // Real Emergency Availability Check (Section 11: Never promise instant service unless technician is online)
+    const emergency = is_emergency ? 1 : 0;
+    let emergencyFee = 0;
+    if (emergency) {
+      const onlineRow = await db.queryOne(
+        "SELECT COUNT(*) AS c FROM users WHERE role = 'worker' AND online = 1 AND skill = $1",
+        [s.cat]
+      );
+      if (Number(onlineRow?.c || 0) === 0) {
+        bad(409, `Abhi ${s.cat} mein koi online emergency technician available nahi hai. Kripya normal scheduled slot chunein.`);
+      }
+      emergencyFee = EMERGENCY_FEE;
+    }
+
     const code = String(crypto.randomInt(1000, 10000));
 
-    // Optional coupon discount validation
+    // Optional Active AMC Subscription Check & Visit Redemption (Section 13)
     let validDiscount = 0;
     let validCouponCode = null;
-    if (coupon_code) {
+    let validAmcSubId = null;
+
+    if (amc_subscription_id) {
+      const sub = await db.queryOne(
+        `SELECT sub.*, p.category FROM amc_subscriptions sub
+         JOIN amc_plans p ON p.id = sub.plan_id
+         WHERE sub.id = $1 AND sub.user_id = $2 AND sub.status = 'active'`,
+        [Number(amc_subscription_id), req.user.id]
+      );
+      if (!sub) bad(404, 'Active AMC subscription nahi mili');
+      if (sub.visits_used >= sub.visits_total) bad(409, 'Is AMC plan ki sabhi free visits use ho chuki hain');
+      if (new Date(sub.end_date).getTime() < Date.now()) bad(409, 'Ye AMC subscription expire ho chuki hai');
+      validAmcSubId = sub.id;
+      validDiscount = s.price;
+      validCouponCode = `AMC-#${sub.id}`;
+    } else if (coupon_code) {
       const cpn = await db.queryOne('SELECT * FROM coupons WHERE UPPER(code) = UPPER($1) AND is_active = 1', [String(coupon_code).trim()]);
       if (cpn && Number(s.price) >= cpn.min_order_amount) {
         validCouponCode = cpn.code;
@@ -679,7 +721,7 @@ function createApp(db = openDb()) {
 
     const desc = issue_desc ? String(issue_desc).trim().slice(0, 500) : null;
     const photo = photo_url ? String(photo_url).trim().slice(0, 100000) : null;
-    const emergency = is_emergency ? 1 : 0;
+    const famName = family_member_name ? String(family_member_name).trim().slice(0, 100) : null;
 
     let cLat = null;
     let cLng = null;
@@ -691,7 +733,6 @@ function createApp(db = openDb()) {
         cLng = pLng;
       }
     } else {
-      // Check if customer has a default saved address with coordinates
       try {
         const defAddr = await db.queryOne('SELECT lat, lng FROM addresses WHERE user_id = $1 AND lat IS NOT NULL AND lng IS NOT NULL ORDER BY is_default DESC, id DESC LIMIT 1', [req.user.id]);
         if (defAddr) {
@@ -701,12 +742,22 @@ function createApp(db = openDb()) {
       } catch {}
     }
 
-    const ins = await db.query(
-      `INSERT INTO bookings (customer_id, service_id, slot, address, pay, start_code, issue_desc, photo_url, coupon_code, discount_amount, is_emergency, customer_lat, customer_lng)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
-      [req.user.id, s.id, String(slot).slice(0, 60), String(address).slice(0, 200), pay, code, desc, photo, validCouponCode, validDiscount, emergency, cLat, cLng]
-    );
-    const id = ins.rows[0].id;
+    const id = await db.transaction(async (tx) => {
+      if (validAmcSubId) {
+        const upd = await tx.query(
+          `UPDATE amc_subscriptions SET visits_used = visits_used + 1 WHERE id = $1 AND visits_used < visits_total`,
+          [validAmcSubId]
+        );
+        if (upd.rowCount !== 1) bad(409, 'AMC visit limit poori ho chuki hai');
+      }
+      const ins = await tx.query(
+        `INSERT INTO bookings (customer_id, service_id, slot, address, pay, start_code, issue_desc, photo_url, coupon_code, discount_amount, is_emergency, customer_lat, customer_lng, emergency_fee, family_member_name, amc_subscription_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
+        [req.user.id, s.id, String(slot).slice(0, 60), String(address).slice(0, 200), pay, code, desc, photo, validCouponCode, validDiscount, emergency, cLat, cLng, emergencyFee, famName, validAmcSubId]
+      );
+      return ins.rows[0].id;
+    });
+
     await notifyUser({
       userId: req.user.id,
       bookingId: id,
@@ -724,6 +775,71 @@ function createApp(db = openDb()) {
       ? await db.query(`${SELECT} WHERE b.customer_id = $1 ORDER BY b.id DESC`, [u.id])
       : await db.query(`${SELECT} WHERE b.worker_id = $1 OR (b.status = 'requested' AND s.cat = $2) ORDER BY b.id DESC`, [u.id, u.skill]);
     ok(res, { bookings: result.rows.map((b) => view(b, u)) });
+  }));
+
+  // Service History & Warranty Eligibility (Section 10 — placed BEFORE /api/bookings/:id)
+  app.get('/api/bookings/warranty-history', auth('customer'), h(async (req, res) => {
+    const rows = await db.query(
+      `${SELECT} WHERE b.customer_id = $1 AND b.status IN ('completed', 'closed') ORDER BY b.id DESC LIMIT 50`,
+      [req.user.id]
+    );
+    const items = rows.rows.map((b) => {
+      const days = b.status === 'closed' ? 0 : (Number(b.warranty_days) || 30);
+      const baseTime = new Date(b.completed_at || b.created_at || Date.now()).getTime();
+      const expiryMs = baseTime + days * 24 * 60 * 60 * 1000;
+      return {
+        booking_id: b.id,
+        service: b.service,
+        category: b.cat,
+        booked_at: b.created_at,
+        completed_at: b.completed_at || b.created_at,
+        technician_name: b.worker_name || 'Verified Partner',
+        technician_verified: Boolean(b.worker_verified),
+        parts_desc: b.parts_desc || null,
+        parts_cost: Number(b.parts || 0),
+        total_paid: Number(b.total || b.price || 0),
+        paid: Boolean(b.paid),
+        warranty_days: days,
+        parts_warranty_days: b.parts > 0 ? 90 : 0,
+        warranty_valid_until: days > 0 ? new Date(expiryMs).toISOString() : null,
+        warranty_active: days > 0 && Date.now() <= expiryMs,
+        warranty_terms: days > 0
+          ? `${days}-day service rework warranty${b.parts > 0 ? ' + 90-day genuine spare parts coverage' : ''}`
+          : 'No service warranty (inspection quote rejected)'
+      };
+    });
+    ok(res, { history: items });
+  }));
+
+  // 1-Click Repeat Booking Preview with Live Price & Availability Recheck (Section 12)
+  app.get('/api/bookings/:id/repeat-preview', auth('customer'), h(async (req, res) => {
+    const b = await load(req.params.id);
+    mine(b, req.user);
+    const svc = await db.queryOne('SELECT * FROM services WHERE id = $1', [b.service_id]);
+    if (!svc) bad(404, 'Ye service ab catalog mein uplabdh nahi hai');
+    const techRow = await db.queryOne("SELECT COUNT(*) AS c FROM users WHERE role = 'worker' AND online = 1 AND skill = $1", [svc.cat]);
+    const onlineCount = Number(techRow?.c || 0);
+    let priceChanged = false;
+    if (b.status === 'completed' || (Number(b.total) > 0 && b.status !== 'closed')) {
+      const origBase = Math.max(0, Number(b.total) - Number(b.parts || 0) - Number(b.emergency_fee || 0) + Number(b.discount_amount || 0));
+      priceChanged = origBase > 0 && origBase !== Number(svc.price);
+    }
+    ok(res, {
+      service: svc,
+      previous_booking: {
+        id: b.id,
+        address: b.address,
+        slot: b.slot,
+        pay: b.pay,
+        issue_desc: b.issue_desc,
+        family_member_name: b.family_member_name || null
+      },
+      price_changed: priceChanged,
+      availability: {
+        available: onlineCount > 0,
+        online_technicians: onlineCount
+      }
+    });
   }));
 
   app.get('/api/bookings/:id', auth(), h(async (req, res) => {
@@ -766,7 +882,8 @@ function createApp(db = openDb()) {
     if (b.cat === 'Home Tutor' && parts) bad(400, 'Tutor ke quote mein parts nahi hote');
     const parts_desc = req.body.parts_desc ? String(req.body.parts_desc).trim().slice(0, 300) : null;
     const discount = Number(b.discount_amount || 0);
-    const subtotal = b.price + parts;
+    const emergencyFee = Number(b.emergency_fee || 0);
+    const subtotal = b.price + parts + emergencyFee;
     const total = Math.max(0, subtotal - discount);
     return { setFields: { parts, parts_desc, total } };
   });
@@ -1193,12 +1310,13 @@ function createApp(db = openDb()) {
         });
       }
       if (b.is_emergency) {
+        const emgFee = Number(b.emergency_fee || 0);
         items.push({
           title: 'Priority Emergency Dispatch (Within 60 mins)',
           qty: 1,
-          rate: 0,
-          amount: 0,
-          note: 'Complimentary Priority'
+          rate: emgFee,
+          amount: emgFee,
+          note: emgFee > 0 ? 'Express Emergency Surcharge' : 'Priority Dispatch'
         });
       }
       if (b.discount_amount && b.discount_amount > 0) {
@@ -1211,7 +1329,7 @@ function createApp(db = openDb()) {
       }
     }
 
-    const subtotal = isClosed ? VISIT_FEE : (b.price + (b.parts || 0));
+    const subtotal = isClosed ? VISIT_FEE : (b.price + (b.parts || 0) + (b.emergency_fee || 0));
     const discount = isClosed ? 0 : (b.discount_amount || 0);
     const finalPayable = isClosed ? VISIT_FEE : Math.max(0, subtotal - discount);
 
@@ -1780,6 +1898,255 @@ function createApp(db = openDb()) {
         ? `Complaint resolve ho gayi aur customer ke wallet mein ₹${refund} refund credit ho gaya`
         : `Complaint status update ho gaya: ${nextStatus}`
     });
+  }));
+
+  // ---------- Phase 8: Emergency Availability, AMC Plans, Family Accounts, Reminders & Service Areas ----------
+  app.get('/api/services/emergency-availability', h(async (req, res) => {
+    let cat = req.query.cat ? String(req.query.cat).trim() : null;
+    if (!cat && req.query.serviceId) {
+      const s = await db.queryOne('SELECT cat FROM services WHERE id = $1', [Number(req.query.serviceId)]);
+      if (s) cat = s.cat;
+    }
+    const row = cat
+      ? await db.queryOne("SELECT COUNT(*) AS c FROM users WHERE role = 'worker' AND online = 1 AND skill = $1", [cat])
+      : await db.queryOne("SELECT COUNT(*) AS c FROM users WHERE role = 'worker' AND online = 1");
+    const onlineCount = Number(row?.c || 0);
+    ok(res, {
+      category: cat || 'All',
+      available: onlineCount > 0,
+      online_technicians: onlineCount,
+      emergency_fee: EMERGENCY_FEE,
+      message: onlineCount > 0
+        ? `${onlineCount} verified technician(s) abhi online hain (₹${EMERGENCY_FEE} express priority fee)`
+        : `Abhi ${cat || 'is category'} mein koi live emergency technician online nahi hai`
+    });
+  }));
+
+  app.get('/api/amc/plans', h(async (req, res) => {
+    try {
+      const plans = await db.query('SELECT * FROM amc_plans WHERE is_active = 1 ORDER BY price ASC');
+      ok(res, { plans: plans.rows });
+    } catch {
+      ok(res, { plans: [] });
+    }
+  }));
+
+  app.post('/api/admin/amc-plans', auth('admin'), h(async (req, res) => {
+    const { name, category, validity_months, price, visits_included, inclusions, exclusions, description } = req.body || {};
+    if (!name || String(name).trim().length < 3) bad(400, 'Plan ka naam kam se kam 3 akshar ho');
+    if (!category || !CATEGORIES.includes(category)) bad(400, 'Valid category chunein');
+    const p = Number(price);
+    const months = Number(validity_months) || 12;
+    const visits = Number(visits_included) || 2;
+    if (!Number.isInteger(p) || p <= 0) bad(400, 'Valid positive price daalein');
+
+    const ins = await db.query(
+      `INSERT INTO amc_plans (name, category, description, validity_months, price, visits_included, inclusions, exclusions)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [
+        String(name).trim().slice(0, 140),
+        category,
+        description ? String(description).trim().slice(0, 500) : null,
+        months,
+        p,
+        visits,
+        String(inclusions || 'Preventive servicing and priority dispatch').slice(0, 1000),
+        String(exclusions || 'Major hardware parts replacement').slice(0, 1000)
+      ]
+    );
+    const plan = await db.queryOne('SELECT * FROM amc_plans WHERE id = $1', [ins.rows[0].id]);
+    ok(res, { plan, message: 'AMC Plan create ho gaya' }, 201);
+  }));
+
+  app.post('/api/amc/subscribe', auth('customer'), h(async (req, res) => {
+    const { plan_id, payment_method = 'wallet', auto_renew = 0 } = req.body || {};
+    const plan = await db.queryOne('SELECT * FROM amc_plans WHERE id = $1 AND is_active = 1', [Number(plan_id)]);
+    if (!plan) bad(404, 'AMC plan nahi mila');
+    if (!['wallet', 'cash', 'razorpay'].includes(payment_method)) bad(400, 'Valid payment method chunein');
+
+    const start = new Date();
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + Number(plan.validity_months || 12));
+
+    const subId = await db.transaction(async (tx) => {
+      if (payment_method === 'wallet') {
+        const u = await tx.queryOne('SELECT wallet FROM users WHERE id = $1', [req.user.id]);
+        if (!u || u.wallet < plan.price) bad(402, 'Wallet mein paise kam hain');
+        await credit(req.user.id, `AMC Plan: ${plan.name}`, -plan.price, tx);
+      }
+      const ins = await tx.query(
+        `INSERT INTO amc_subscriptions (user_id, plan_id, status, visits_used, visits_total, start_date, end_date, price_paid, payment_method, auto_renew)
+         VALUES ($1, $2, 'active', 0, $3, $4, $5, $6, $7, $8) RETURNING id`,
+        [req.user.id, plan.id, plan.visits_included, start.toISOString(), end.toISOString(), plan.price, payment_method, auto_renew ? 1 : 0]
+      );
+      return ins.rows[0].id;
+    });
+
+    await notifyUser({
+      userId: req.user.id,
+      title: `AMC Activated: ${plan.name}`,
+      body: `${plan.visits_included} free service visits valid until ${end.toLocaleDateString('en-IN')}.`,
+      type: 'amc',
+      dedupeKey: `amc_sub_${subId}`
+    });
+
+    const sub = await db.queryOne(
+      `SELECT s.*, p.name AS plan_name, p.category, p.validity_months, p.inclusions, p.exclusions
+       FROM amc_subscriptions s JOIN amc_plans p ON p.id = s.plan_id WHERE s.id = $1`,
+      [subId]
+    );
+    ok(res, { subscription: sub, message: `AMC Plan "${plan.name}" active ho gaya!` }, 201);
+  }));
+
+  app.get('/api/amc/my', auth('customer'), h(async (req, res) => {
+    const rows = await db.query(
+      `SELECT s.*, p.name AS plan_name, p.category, p.validity_months, p.price AS current_price, p.inclusions, p.exclusions
+       FROM amc_subscriptions s JOIN amc_plans p ON p.id = s.plan_id
+       WHERE s.user_id = $1 ORDER BY s.id DESC`,
+      [req.user.id]
+    );
+    const list = rows.rows.map((s) => {
+      const daysLeft = Math.max(0, Math.ceil((new Date(s.end_date).getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+      return {
+        ...s,
+        visits_remaining: Math.max(0, Number(s.visits_total) - Number(s.visits_used)),
+        days_left: daysLeft,
+        needs_renewal: daysLeft <= 30 || Number(s.visits_used) >= Number(s.visits_total)
+      };
+    });
+    ok(res, { subscriptions: list });
+  }));
+
+  app.post('/api/amc/:id/renew', auth('customer'), h(async (req, res) => {
+    const sub = await db.queryOne(
+      `SELECT s.*, p.name AS plan_name, p.price, p.validity_months, p.visits_included
+       FROM amc_subscriptions s JOIN amc_plans p ON p.id = s.plan_id
+       WHERE s.id = $1 AND s.user_id = $2`,
+      [Number(req.params.id), req.user.id]
+    );
+    if (!sub) bad(404, 'AMC subscription nahi mili');
+    const payMethod = (req.body && req.body.payment_method) || 'wallet';
+    const baseStart = new Date(Math.max(Date.now(), new Date(sub.end_date).getTime()));
+    const newEnd = new Date(baseStart);
+    newEnd.setMonth(newEnd.getMonth() + Number(sub.validity_months || 12));
+
+    await db.transaction(async (tx) => {
+      if (payMethod === 'wallet') {
+        const u = await tx.queryOne('SELECT wallet FROM users WHERE id = $1', [req.user.id]);
+        if (!u || u.wallet < sub.price) bad(402, 'Wallet mein paise kam hain');
+        await credit(req.user.id, `AMC Renewal: ${sub.plan_name}`, -sub.price, tx);
+      }
+      await tx.query(
+        `UPDATE amc_subscriptions
+         SET status = 'active', visits_used = 0, visits_total = $1, end_date = $2
+         WHERE id = $3`,
+        [sub.visits_included, newEnd.toISOString(), sub.id]
+      );
+    });
+
+    const updated = await db.queryOne(
+      `SELECT s.*, p.name AS plan_name, p.category, p.inclusions, p.exclusions
+       FROM amc_subscriptions s JOIN amc_plans p ON p.id = s.plan_id WHERE s.id = $1`,
+      [sub.id]
+    );
+    ok(res, { subscription: updated, message: `AMC Plan "${sub.plan_name}" renew ho gaya!` });
+  }));
+
+  // ---------- Family Accounts (Section 14) ----------
+  app.get('/api/family', auth('customer'), h(async (req, res) => {
+    const rows = await db.query('SELECT * FROM family_members WHERE owner_user_id = $1 ORDER BY id DESC', [req.user.id]);
+    ok(res, { members: rows.rows });
+  }));
+
+  app.post('/api/family', auth('customer'), h(async (req, res) => {
+    const { member_name, member_phone, relation = 'Family', can_book = 1 } = req.body || {};
+    if (!member_name || String(member_name).trim().length < 2) bad(400, 'Member ka naam likhein');
+    if (!PHONE.test(String(member_phone || '').trim())) bad(400, 'Valid 10-digit mobile number daalein');
+
+    const ins = await db.query(
+      `INSERT INTO family_members (owner_user_id, member_name, member_phone, relation, can_book)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [req.user.id, String(member_name).trim().slice(0, 80), String(member_phone).trim(), String(relation).trim().slice(0, 40), can_book ? 1 : 0]
+    );
+    const member = await db.queryOne('SELECT * FROM family_members WHERE id = $1', [ins.rows[0].id]);
+    ok(res, { member, message: 'Family member add ho gaya' }, 201);
+  }));
+
+  app.delete('/api/family/:id', auth('customer'), h(async (req, res) => {
+    const r = await db.query('DELETE FROM family_members WHERE id = $1 AND owner_user_id = $2', [Number(req.params.id), req.user.id]);
+    if (r.rowCount === 0) bad(404, 'Member nahi mila');
+    ok(res, { message: 'Family member hata diya gaya' });
+  }));
+
+  // ---------- Service Maintenance Reminders (Section 18) ----------
+  app.get('/api/reminders', auth('customer'), h(async (req, res) => {
+    const rows = await db.query('SELECT * FROM service_reminders WHERE user_id = $1 ORDER BY next_due_date ASC', [req.user.id]);
+    ok(res, { reminders: rows.rows });
+  }));
+
+  app.post('/api/reminders', auth('customer'), h(async (req, res) => {
+    const { category, title, interval_months = 6 } = req.body || {};
+    if (!category || !CATEGORIES.includes(category)) bad(400, 'Valid category chunein');
+    if (!title || String(title).trim().length < 3) bad(400, 'Reminder title likhein');
+    const months = Math.max(1, Math.min(24, Number(interval_months) || 6));
+    const due = new Date();
+    due.setMonth(due.getMonth() + months);
+
+    const ins = await db.query(
+      `INSERT INTO service_reminders (user_id, category, title, interval_months, next_due_date, enabled)
+       VALUES ($1, $2, $3, $4, $5, 1) RETURNING id`,
+      [req.user.id, category, String(title).trim().slice(0, 140), months, due.toISOString()]
+    );
+    const reminder = await db.queryOne('SELECT * FROM service_reminders WHERE id = $1', [ins.rows[0].id]);
+    ok(res, { reminder, message: 'Service reminder set ho gaya' }, 201);
+  }));
+
+  app.put('/api/reminders/:id/toggle', auth('customer'), h(async (req, res) => {
+    const r = await db.queryOne('SELECT * FROM service_reminders WHERE id = $1 AND user_id = $2', [Number(req.params.id), req.user.id]);
+    if (!r) bad(404, 'Reminder nahi mila');
+    const nextVal = r.enabled ? 0 : 1;
+    await db.query('UPDATE service_reminders SET enabled = $1 WHERE id = $2', [nextVal, r.id]);
+    ok(res, { enabled: Boolean(nextVal), message: nextVal ? 'Reminder chalu kiya gaya' : 'Reminder band kiya gaya' });
+  }));
+
+  app.delete('/api/reminders/:id', auth('customer'), h(async (req, res) => {
+    const r = await db.query('DELETE FROM service_reminders WHERE id = $1 AND user_id = $2', [Number(req.params.id), req.user.id]);
+    if (r.rowCount === 0) bad(404, 'Reminder nahi mila');
+    ok(res, { message: 'Reminder delete kar diya gaya' });
+  }));
+
+  // ---------- Location & Pincode Service Areas (Section 21) ----------
+  app.get('/api/service-areas', h(async (req, res) => {
+    const rows = await db.query('SELECT * FROM service_areas WHERE is_active = 1 ORDER BY pincode ASC');
+    ok(res, { areas: rows.rows });
+  }));
+
+  app.get('/api/service-areas/check', h(async (req, res) => {
+    const pin = String(req.query.pincode || '').trim();
+    if (!/^\d{6}$/.test(pin)) bad(400, '6-digit valid pincode daalein');
+    const area = await db.queryOne('SELECT * FROM service_areas WHERE pincode = $1 AND is_active = 1', [pin]);
+    ok(res, {
+      pincode: pin,
+      serviceable: Boolean(area),
+      area: area || null,
+      message: area ? `Service available in ${area.area_name}, ${area.city}` : `Pincode ${pin} abhi service coverage mein nahi hai`
+    });
+  }));
+
+  app.post('/api/admin/service-areas', auth('admin'), h(async (req, res) => {
+    const { pincode, city = 'Dhanbad', area_name, is_active = 1 } = req.body || {};
+    const pin = String(pincode || '').trim();
+    if (!/^\d{6}$/.test(pin)) bad(400, '6-digit valid pincode daalein');
+    if (!area_name || String(area_name).trim().length < 2) bad(400, 'Area ka naam likhein');
+
+    await db.query(
+      `INSERT INTO service_areas (pincode, city, area_name, is_active)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (pincode) DO UPDATE SET city = EXCLUDED.city, area_name = EXCLUDED.area_name, is_active = EXCLUDED.is_active`,
+      [pin, String(city).trim().slice(0, 80), String(area_name).trim().slice(0, 140), is_active ? 1 : 0]
+    );
+    const area = await db.queryOne('SELECT * FROM service_areas WHERE pincode = $1', [pin]);
+    ok(res, { area, message: `Pincode ${pin} updated` }, 201);
   }));
 
   // ---------- AI Assistant (Voice + Chat) ----------
