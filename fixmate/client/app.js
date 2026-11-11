@@ -70,7 +70,9 @@ const P = {
   tag: '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
   camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
   plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
-  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
+  nav: '<polygon points="3 11 22 2 13 21 11 13 3 11"/>'
 };
 
 function ic(n, sz = 20, f) {
@@ -137,6 +139,15 @@ let S = {
   wkReviews: [],
   wkStartPhotos: {},
   wkCompletePhotos: {},
+  notifications: [],
+  unreadNotifications: 0,
+  customerLat: null,
+  customerLng: null,
+  activeTracking: null,
+  trackingBookingId: null,
+  trackingPollTimer: null,
+  wkSharingBookingId: null,
+  wkWatchId: null,
   user: null,
   lg: { step: 0, ph: '', otp: '', tries: 0, exp: 0, rs: 0 }
 };
@@ -445,6 +456,10 @@ function home() {
     <div class="row">
       <b style="font-size:26px;letter-spacing:-0.03em">${BRAND}</b>
       <div class="ics">
+        <button class="ic" style="position:relative" onclick="openNotificationsModal()" aria-label="Notifications">
+          ${ic('bell', 18)}
+          ${S.unreadNotifications > 0 ? `<span class="notif-dot">${S.unreadNotifications > 9 ? '9+' : S.unreadNotifications}</span>` : ''}
+        </button>
         <button class="ic" onclick="go('pf')" aria-label="Profile">${ic('user', 18)}</button>
         <button class="ic" onclick="theme()" aria-label="Theme badlo">${ic('theme', 18)}</button>
       </div>
@@ -670,6 +685,9 @@ function book() {
     </div>
   ` : ''}
   <input id="ad" placeholder="Ghar / Flat no, gali, landmark, Dhanbad" value="${esc(S.ad)}" oninput="S.ad=this.value">
+  <button class="btn sm ghost" style="margin-bottom:14px;font-size:12px" onclick="captureCustomerGps()">
+    ${S.customerLat ? `✅ GPS Pin Set (${S.customerLat.toFixed(4)}, ${S.customerLng.toFixed(4)})` : '📍 Set Exact Map Pin (Optional — Live ETA ke liye)'}
+  </button>
 
   <!-- Offers & Coupons -->
   <h2>Offers & Coupons</h2>
@@ -749,7 +767,9 @@ function doBook() {
       photo_url: S.bookingPhoto || null,
       coupon_code: couponCode,
       discount_amount: discountAmount,
-      is_emergency: S.emergency ? 1 : 0
+      is_emergency: S.emergency ? 1 : 0,
+      customer_lat: S.customerLat,
+      customer_lng: S.customerLng
     });
     await refresh();
     S.scr = 'bk';
@@ -799,9 +819,16 @@ function bkc(b) {
     ` : ''}
 
     ${b.contact_phone && !isCan ? `
-      <a href="tel:${esc(b.contact_phone)}" class="btn sm" style="text-decoration:none;margin-top:10px;background:var(--sec);color:#fff">
-        ${ic('phone', 16)} Worker ko call karo (${esc(b.contact_phone)})
-      </a>
+      <div class="row" style="margin-top:10px;gap:8px">
+        <a href="tel:${esc(b.contact_phone)}" class="btn sm" style="flex:1;text-decoration:none;background:var(--sec);color:#fff">
+          ${ic('phone', 16)} Call Tech
+        </a>
+        ${['assigned', 'on_the_way', 'inspecting', 'quoted', 'in_progress'].includes(b.status) ? `
+          <button class="btn sm acc" style="flex:1.2" onclick="openTrackingModal(${b.id})">
+            🗺️ Live Map${b.tracking_active && b.eta_minutes ? ` (${b.eta_minutes}m)` : ' & ETA'}
+          </button>
+        ` : ''}
+      </div>
     ` : ''}
 
     <!-- Prominent Safety Code for Worker Arrival -->
@@ -1126,8 +1153,8 @@ function wcard(b) {
 
     <!-- Quick Navigation & Call Buttons -->
     <div class="row" style="margin-bottom:10px">
-      <a href="https://www.google.com/maps/search/?api=1&query=${mapQuery}" target="_blank" rel="noopener" class="btn sm ghost" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px">
-        ${ic('pin', 14)} Map Pe Dekhein
+      <a href="${b.customer_lat && b.customer_lng ? `https://www.openstreetmap.org/?mlat=${b.customer_lat}&mlon=${b.customer_lng}#map=16/${b.customer_lat}/${b.customer_lng}` : `https://www.google.com/maps/search/?api=1&query=${mapQuery}`}" target="_blank" rel="noopener" class="btn sm ghost" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px">
+        ${ic('pin', 14)} Navigate
       </a>
       ${b.contact_phone ? `
         <a href="tel:${esc(b.contact_phone)}" class="btn sm" style="text-decoration:none;background:var(--sec);color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:6px">
@@ -1135,6 +1162,20 @@ function wcard(b) {
         </a>
       ` : ''}
     </div>
+
+    ${['assigned', 'on_the_way', 'inspecting', 'quoted', 'in_progress'].includes(a) ? `
+      <div class="card" style="background:${S.wkSharingBookingId === b.id || b.tracking_active ? 'rgba(47,158,122,0.08)' : 'var(--soft)'};border-color:${S.wkSharingBookingId === b.id || b.tracking_active ? 'var(--teal)' : 'var(--bd)'};padding:10px 12px;margin-bottom:10px">
+        <div class="row">
+          <div style="font-size:12px">
+            <b>${S.wkSharingBookingId === b.id || b.tracking_active ? '🟢 Live Location Sharing Active' : '📍 Share Live Location'}</b>
+            <div class="mut" style="font-size:11px">Sirf is active job ke dauran customer ko live map & ETA dikhega.</div>
+          </div>
+          <button class="btn sm ${S.wkSharingBookingId === b.id ? 'ghost' : 'acc'}" style="width:auto;padding:6px 12px;font-size:11.5px" onclick="toggleWorkerLocationSharing(${b.id})">
+            ${S.wkSharingBookingId === b.id ? '⏹️ Stop GPS' : '📡 Share GPS'}
+          </button>
+        </div>
+      </div>
+    ` : ''}
 
     <!-- Lifecycle Actions -->
     ${a === 'assigned' ? `
@@ -1245,12 +1286,13 @@ function workerStartJob(id) {
 }
 
 function workerCompleteJob(id) {
+  stopWorkerGpsWatch();
   const photo = S.wkCompletePhotos[id] || null;
   act(async () => {
     await api('POST', `/bookings/${id}/complete`, { complete_photo_url: photo });
     await refresh();
     render();
-    toast('Kaam poora mark ho gaya! Bill generate hua.');
+    toast('Kaam poora mark ho gaya! Live tracking band aur bill generate hua.');
   });
 }
 
@@ -1409,6 +1451,14 @@ function openReviewModal(id) {
 }
 
 function closeModal() {
+  if (S.trackingPollTimer) {
+    clearInterval(S.trackingPollTimer);
+    S.trackingPollTimer = null;
+  }
+  if (S.leafletMap) {
+    try { S.leafletMap.remove(); } catch (e) {}
+    S.leafletMap = null;
+  }
   S.modal = null;
   render();
 }
@@ -1417,6 +1467,10 @@ function selectAddress(addr) {
   const full = addr.address_line + (addr.landmark ? ', ' + addr.landmark : '') + ', ' + addr.city;
   S.ad = full;
   S.activeAddrId = addr.id;
+  if (addr.lat && addr.lng) {
+    S.customerLat = Number(addr.lat);
+    S.customerLng = Number(addr.lng);
+  }
   S.modal = null;
   render();
   toast('Address set: ' + addr.label);
@@ -1826,6 +1880,99 @@ function renderModal() {
     </div>`;
   }
 
+  if (S.modal === 'tracking') {
+    const tr = S.activeTracking;
+    if (!tr) return '';
+    const wLoc = tr.worker_location;
+    const cLoc = tr.customer_location;
+    const tl = tr.timeline || [];
+
+    return `<div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:92vh;overflow-y:auto">
+        <div class="modal-header">
+          <div>
+            <h3 style="margin:0;font-size:18px">🗺️ Live Technician Tracking</h3>
+            <div class="mut" style="font-size:12px">Booking #${tr.booking_id} · ${esc(tr.status_label)}</div>
+          </div>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+
+        ${tr.tracking_active && wLoc ? `
+          <div class="card" style="background:rgba(47,158,122,0.08);border-color:var(--teal);padding:10px 12px;margin-bottom:12px">
+            <div class="row">
+              <div>
+                <b style="color:var(--teal);font-size:14px">🟢 Live GPS Active</b>
+                <div class="mut" style="font-size:11.5px">Updated: ${new Date(wLoc.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+              </div>
+              <div style="text-align:right">
+                ${wLoc.eta_minutes ? `<b style="font-size:18px;color:var(--sec)">~${wLoc.eta_minutes} min</b>` : '<b style="color:var(--teal)">En Route</b>'}
+                ${wLoc.distance_km != null ? `<div class="mut" style="font-size:11px">${wLoc.distance_km} km away</div>` : ''}
+              </div>
+            </div>
+          </div>
+        ` : `
+          <div class="card" style="background:var(--soft);border:none;padding:10px 12px;margin-bottom:12px;font-size:12px">
+            ${tr.is_active_job
+              ? '⏳ <b>Location Permission Pending:</b> Technician ne abhi GPS sharing on nahi ki hai. Jab wo "Share GPS" chalu karenge tab live map update hoga.'
+              : '🔒 Privacy Notice: Technician location sirf active booking ke dauran hi visible hoti hai.'}
+          </div>
+        `}
+
+        <div id="live-track-map" class="live-map-box"></div>
+
+        ${tr.technician ? `
+          <div class="card row" style="margin-top:12px;padding:10px 12px">
+            <div>
+              <b>${esc(tr.technician.name)}</b> ${tr.technician.verified ? '⭐ Verified' : ''}
+              <div class="mut" style="font-size:11.5px">${esc(tr.technician.skill)} · ${esc(cLoc?.address || 'Dhanbad')}</div>
+            </div>
+            ${tr.technician.contact_phone ? `<a href="tel:${esc(tr.technician.contact_phone)}" class="btn sm acc" style="width:auto;padding:6px 12px;text-decoration:none">${ic('phone', 14)} Call</a>` : ''}
+          </div>
+        ` : ''}
+
+        ${tl.length ? `
+          <div style="font-weight:700;font-size:13px;margin:12px 0 6px">Live Status Updates</div>
+          <div class="card" style="padding:10px 12px;font-size:12px">
+            ${tl.map((step) => `
+              <div class="row" style="padding:4px 0;border-bottom:1px dashed var(--bd)">
+                <span>✅ <b>${esc(step.new_status.replace(/_/g, ' '))}</b> ${step.notes ? `— ${esc(step.notes)}` : ''}</span>
+                <span class="mut" style="font-size:11px">${new Date(step.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <button class="btn ghost" style="margin-top:12px" onclick="closeModal()">Band Karein</button>
+      </div>
+    </div>`;
+  }
+
+  if (S.modal === 'notifications') {
+    const list = S.notifications || [];
+    return `<div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:85vh;overflow-y:auto">
+        <div class="modal-header">
+          <h3>🔔 Status Notifications</h3>
+          <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        ${list.length ? `
+          <div style="text-align:right;margin-bottom:8px">
+            <button class="btn sm ghost" style="width:auto;padding:4px 10px;font-size:11px" onclick="markAllNotificationsRead()">Mark All Read</button>
+          </div>
+          ${list.map((n) => `
+            <div class="card" style="margin-bottom:8px;padding:10px 12px;background:${n.is_read ? 'var(--card)' : 'rgba(0,106,96,0.06)'};border-color:${n.is_read ? 'var(--bd)' : 'var(--teal)'}">
+              <div class="row">
+                <b style="font-size:13px">${esc(n.title)}</b>
+                <span class="mut" style="font-size:10.5px">${new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+              <div class="mut" style="font-size:12px;margin-top:3px">${esc(n.body)}</div>
+            </div>
+          `).join('')}
+        ` : '<div class="card mut" style="text-align:center;padding:24px">Abhi koi naya notification nahi hai.</div>'}
+      </div>
+    </div>`;
+  }
+
   return '';
 }
 
@@ -2052,8 +2199,215 @@ function downloadPdfInvoice(bookingId) {
     toast('Pehle login karein');
     return;
   }
-  const url = `${API}/bookings/${bookingId}/invoice/html?token=${encodeURIComponent(token)}`;
+  const baseUrl = getApiBase();
+  const url = `${baseUrl}/api/bookings/${bookingId}/invoice/html?token=${encodeURIComponent(token)}`;
   window.open(url, '_blank');
+}
+
+/* ========================================================
+   PHASE 7: LIVE TECHNICIAN TRACKING & NOTIFICATIONS
+   ======================================================== */
+function captureCustomerGps() {
+  if (!navigator.geolocation) {
+    toast('Aapka browser GPS location support nahi karta');
+    return;
+  }
+  toast('Aapka exact map pin capture ho raha hai...');
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      S.customerLat = Number(pos.coords.latitude.toFixed(6));
+      S.customerLng = Number(pos.coords.longitude.toFixed(6));
+      render();
+      toast('GPS map pin save ho gaya!');
+    },
+    (err) => {
+      toast(err.code === 1 ? 'Location permission allow karein browser mein' : 'GPS location fetch nahi ho saki');
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+function stopWorkerGpsWatch() {
+  if (S.wkWatchId != null && navigator.geolocation) {
+    try { navigator.geolocation.clearWatch(S.wkWatchId); } catch (e) {}
+    S.wkWatchId = null;
+  }
+  S.wkSharingBookingId = null;
+}
+
+async function toggleWorkerLocationSharing(bookingId) {
+  if (S.wkSharingBookingId === bookingId) {
+    stopWorkerGpsWatch();
+    try {
+      await api('POST', `/bookings/${bookingId}/location`, { stop: true });
+      await refresh();
+    } catch (e) {}
+    render();
+    toast('Live GPS location sharing band kar di gayi');
+    return;
+  }
+
+  if (!navigator.geolocation) {
+    toast('Is device mein GPS geolocation available nahi hai');
+    return;
+  }
+
+  stopWorkerGpsWatch();
+  toast('GPS permission check ki ja rahi hai...');
+
+  const sendCoords = async (pos) => {
+    try {
+      await api('POST', `/bookings/${bookingId}/location`, {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude
+      });
+    } catch (e) {
+      if (e.message && /sirf active job/i.test(e.message)) {
+        stopWorkerGpsWatch();
+        render();
+      }
+    }
+  };
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      S.wkSharingBookingId = bookingId;
+      await sendCoords(pos);
+      await refresh();
+      render();
+      toast('🟢 Live GPS Sharing chalu! Customer ko ETA dikhega.');
+
+      S.wkWatchId = navigator.geolocation.watchPosition(
+        sendCoords,
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 }
+      );
+    },
+    (err) => {
+      toast(err.code === 1
+        ? 'Location permission denied! Browser address bar se Location Allow karein.'
+        : 'GPS signal nahi mila. Location ON karein.');
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+async function openTrackingModal(bookingId) {
+  S.trackingBookingId = bookingId;
+  await fetchAndRenderTracking(bookingId);
+  S.modal = 'tracking';
+  render();
+  setTimeout(() => renderLeafletTrackingMap(S.activeTracking), 80);
+
+  if (S.trackingPollTimer) clearInterval(S.trackingPollTimer);
+  S.trackingPollTimer = setInterval(async () => {
+    if (S.modal !== 'tracking') return;
+    await fetchAndRenderTracking(bookingId);
+    if (S.modal === 'tracking') {
+      render();
+      setTimeout(() => renderLeafletTrackingMap(S.activeTracking), 60);
+    }
+  }, 5000);
+}
+
+async function fetchAndRenderTracking(bookingId) {
+  try {
+    const res = await api('GET', `/bookings/${bookingId}/tracking`);
+    if (res && res.booking_id) {
+      S.activeTracking = res;
+    }
+  } catch (err) {
+    toast(err.message || 'Tracking data load nahi ho saka');
+  }
+}
+
+function renderLeafletTrackingMap(tr) {
+  const el = $('live-track-map');
+  if (!el || !tr) return;
+
+  const wLoc = tr.worker_location;
+  const cLoc = tr.customer_location;
+  const hasW = tr.tracking_active && wLoc && Number.isFinite(wLoc.lat) && Number.isFinite(wLoc.lng);
+  const hasC = cLoc && Number.isFinite(cLoc.lat) && Number.isFinite(cLoc.lng);
+
+  // Default city center for Dhanbad when coordinates are not yet shared
+  const centerLat = hasW ? wLoc.lat : (hasC ? cLoc.lat : 23.7957);
+  const centerLng = hasW ? wLoc.lng : (hasC ? cLoc.lng : 86.4304);
+
+  if (!window.L) {
+    el.innerHTML = `<div style="padding:18px;text-align:center;font-size:12px;color:var(--mut)">
+      <b>OpenStreetMap Preview</b><br>
+      ${hasW ? `Technician Coords: ${wLoc.lat.toFixed(4)}, ${wLoc.lng.toFixed(4)}` : 'Waiting for live GPS signal from technician...'}
+    </div>`;
+    return;
+  }
+
+  if (S.leafletMap) {
+    try { S.leafletMap.remove(); } catch (e) {}
+    S.leafletMap = null;
+  }
+
+  const map = window.L.map(el).setView([centerLat, centerLng], 14);
+  S.leafletMap = map;
+  window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(map);
+
+  const bounds = [];
+  if (hasC) {
+    const custIcon = window.L.divIcon({
+      className: 'map-pin-badge',
+      html: '<div style="background:#006A60;color:#fff;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)">🏠 Customer</div>',
+      iconSize: [90, 26]
+    });
+    window.L.marker([cLoc.lat, cLoc.lng], { icon: custIcon }).addTo(map).bindPopup('Service Address: ' + esc(cLoc.address));
+    bounds.push([cLoc.lat, cLoc.lng]);
+  }
+
+  if (hasW) {
+    const techIcon = window.L.divIcon({
+      className: 'map-pin-badge',
+      html: `<div style="background:#FA6A00;color:#fff;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)">🛵 Tech ${wLoc.eta_minutes ? `(${wLoc.eta_minutes}m)` : ''}</div>`,
+      iconSize: [100, 26]
+    });
+    window.L.marker([wLoc.lat, wLoc.lng], { icon: techIcon }).addTo(map).bindPopup(esc(tr.technician?.name || 'Technician'));
+    bounds.push([wLoc.lat, wLoc.lng]);
+  }
+
+  if (hasW && hasC) {
+    window.L.polyline([[wLoc.lat, wLoc.lng], [cLoc.lat, cLoc.lng]], {
+      color: '#FA6A00',
+      weight: 3,
+      dashArray: '6, 8'
+    }).addTo(map);
+  }
+
+  if (bounds.length >= 2) {
+    map.fitBounds(bounds, { padding: [36, 36], maxZoom: 15 });
+  } else if (bounds.length === 1) {
+    map.setView(bounds[0], 15);
+  }
+}
+
+async function openNotificationsModal() {
+  try {
+    const res = await api('GET', '/notifications');
+    S.notifications = res.notifications || [];
+    S.unreadNotifications = res.unread_count || 0;
+  } catch (e) {}
+  S.modal = 'notifications';
+  render();
+}
+
+async function markAllNotificationsRead() {
+  try {
+    await api('POST', '/notifications/read', {});
+    S.unreadNotifications = 0;
+    S.notifications = (S.notifications || []).map((n) => ({ ...n, is_read: 1 }));
+    render();
+    toast('Sabhi notifications padhe gaye');
+  } catch (e) {}
 }
 
 /* ========================================================
@@ -2546,12 +2900,13 @@ async function refresh() {
       if (statsRes && statsRes.stats) S.wkStats = statsRes.stats;
       if (reviewsRes && reviewsRes.reviews) S.wkReviews = reviewsRes.reviews;
     } else {
-      const [w, b, addrRes, cpnRes, compRes] = await Promise.all([
+      const [w, b, addrRes, cpnRes, compRes, notifRes] = await Promise.all([
         api('GET', '/wallet'),
         api('GET', '/bookings'),
         api('GET', '/addresses').catch(() => ({ addresses: [] })),
         api('GET', '/coupons').catch(() => ({ coupons: [] })),
-        api('GET', '/complaints/my').catch(() => ({ complaints: [] }))
+        api('GET', '/complaints/my').catch(() => ({ complaints: [] })),
+        api('GET', '/notifications').catch(() => ({ notifications: [], unread_count: 0 }))
       ]);
       S.w = w.balance;
       S.tx = w.transactions.map((t) => [t.label, t.amount]);
@@ -2559,12 +2914,18 @@ async function refresh() {
       S.addresses = addrRes.addresses || [];
       S.coupons = cpnRes.coupons || [];
       S.myComplaints = compRes.complaints || [];
+      S.notifications = notifRes.notifications || [];
+      S.unreadNotifications = notifRes.unread_count || 0;
 
       // Auto-select default address if none chosen
       if (!S.ad && S.addresses.length) {
         const def = S.addresses.find((a) => a.is_default) || S.addresses[0];
         S.ad = def.address_line + (def.landmark ? ', ' + def.landmark : '') + ', ' + def.city;
         S.activeAddrId = def.id;
+        if (def.lat && def.lng) {
+          S.customerLat = Number(def.lat);
+          S.customerLng = Number(def.lng);
+        }
       }
     }
   } catch (e) {

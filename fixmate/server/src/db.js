@@ -216,6 +216,20 @@ CREATE TABLE IF NOT EXISTS ai_messages (
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS ai_messages_user_idx ON ai_messages(user_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE,
+  title VARCHAR(150) NOT NULL DEFAULT 'FixMate Update',
+  body TEXT NOT NULL,
+  type VARCHAR(30) DEFAULT 'booking_status',
+  data_json TEXT,
+  is_read SMALLINT NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)),
+  dedupe_key VARCHAR(100),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id, id DESC);
 `;
 
 function getPoolConfig(customConfig = {}) {
@@ -313,6 +327,13 @@ function openMemoryDb() {
       parts_desc TEXT,
       warranty_days INTEGER DEFAULT 30,
       completed_at TEXT,
+      customer_lat REAL,
+      customer_lng REAL,
+      worker_lat REAL,
+      worker_lng REAL,
+      tracking_active INTEGER DEFAULT 0,
+      eta_minutes INTEGER,
+      location_updated_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE categories (
@@ -392,6 +413,19 @@ function openMemoryDb() {
       cards_json TEXT,
       provider TEXT DEFAULT 'fixmate-ai',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE,
+      title TEXT NOT NULL DEFAULT 'FixMate Update',
+      body TEXT NOT NULL,
+      type TEXT DEFAULT 'booking_status',
+      data_json TEXT,
+      is_read INTEGER NOT NULL DEFAULT 0,
+      dedupe_key TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, dedupe_key)
     );
     CREATE TABLE wallet_tx (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -578,11 +612,24 @@ function openDb(config = {}) {
             ALTER TABLE bookings ADD COLUMN IF NOT EXISTS parts_desc TEXT;
             ALTER TABLE bookings ADD COLUMN IF NOT EXISTS warranty_days INTEGER DEFAULT 30;
             ALTER TABLE bookings ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS customer_lat NUMERIC(10, 7);
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS customer_lng NUMERIC(10, 7);
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS worker_lat NUMERIC(10, 7);
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS worker_lng NUMERIC(10, 7);
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS tracking_active SMALLINT DEFAULT 0;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS eta_minutes INTEGER;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS location_updated_at TIMESTAMPTZ;
 
             ALTER TABLE users ADD COLUMN IF NOT EXISTS experience_years INTEGER DEFAULT 2;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS id_document_url TEXT;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS id_verified SMALLINT DEFAULT 1;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS service_areas VARCHAR(255) DEFAULT 'All Dhanbad';
+
+            ALTER TABLE notifications ADD COLUMN IF NOT EXISTS booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE;
+            ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_key VARCHAR(100);
+            ALTER TABLE notifications ADD COLUMN IF NOT EXISTS data_json TEXT;
+            DROP INDEX IF EXISTS notifications_dedupe_idx;
+            CREATE UNIQUE INDEX IF NOT EXISTS notifications_user_dedupe_uidx ON notifications(user_id, dedupe_key);
           `);
         } catch (colErr) {
           console.warn('[PostgreSQL Init Notice] Column migration:', colErr.message);

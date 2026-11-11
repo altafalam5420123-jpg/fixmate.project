@@ -988,6 +988,164 @@ test('Phase 6 AI Voice Agent, Authenticated Session, Conversation History & Smar
   }
 });
 
+test('Phase 7 Live Technician Tracking: Active-Job Privacy Guardrails, Haversine ETA & Status Notifications', async () => {
+  const jwt = require('jsonwebtoken');
+  const { createApp } = require('../src/app');
+  const db = openDb(':memory:');
+  await db.initDb();
+
+  const custId = Number(db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet) VALUES ('9876541001', 'Track Customer', 'customer', null, 3000)").run().lastInsertRowid);
+  const strangerId = Number(db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet) VALUES ('9876541002', 'Stranger User', 'customer', null, 1000)").run().lastInsertRowid);
+  const workerId = Number(db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet, online, id_verified) VALUES ('9876541003', 'Track Tech', 'worker', 'Electrician', 500, 1, 1)").run().lastInsertRowid);
+  const otherWorkerId = Number(db.sqlite.prepare("INSERT INTO users (phone, name, role, skill, wallet, online) VALUES ('9876541004', 'Other Tech', 'worker', 'Electrician', 500, 1)").run().lastInsertRowid);
+
+  const custToken = jwt.sign({ id: custId, tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+  const strangerToken = jwt.sign({ id: strangerId, tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+  const workerToken = jwt.sign({ id: workerId, tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+  const otherWorkerToken = jwt.sign({ id: otherWorkerId, tokenVersion: 0 }, process.env.JWT_SECRET || 'test-secret');
+
+  const server = createApp(db).listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://localhost:${server.address().port}`;
+
+  try {
+    // 1. Customer books with GPS coordinates (Dhanbad Station Area)
+    const bookRes = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({
+        serviceId: 1,
+        slot: 'Abhi (60 min mein)',
+        address: 'Bank More, Dhanbad',
+        pay: 'wallet',
+        customer_lat: 23.7957,
+        customer_lng: 86.4304
+      })
+    });
+    assert.equal(bookRes.status, 201);
+    const bData = await bookRes.json();
+    const bId = bData.booking.id;
+    const startCode = bData.booking.start_code;
+    assert.equal(bData.booking.tracking_active, false);
+    assert.equal(bData.booking.worker_lat, null);
+
+    // 2. Worker accepts job & starts heading over
+    await fetch(`${base}/api/bookings/${bId}/accept`, { method: 'POST', headers: { Authorization: `Bearer ${workerToken}` } });
+    await fetch(`${base}/api/bookings/${bId}/on-the-way`, { method: 'POST', headers: { Authorization: `Bearer ${workerToken}` } });
+
+    // Unassigned worker cannot spoof location
+    const unauthPush = await fetch(`${base}/api/bookings/${bId}/location`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${otherWorkerToken}` },
+      body: JSON.stringify({ lat: 23.805, lng: 86.440 })
+    });
+    assert.equal(unauthPush.status, 403);
+
+    // 3. Assigned worker grants location permission & shares GPS (~1.4km away)
+    const pushRes = await fetch(`${base}/api/bookings/${bId}/location`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({ lat: 23.8050, lng: 86.4400 })
+    });
+    assert.equal(pushRes.status, 200);
+    const pushData = await pushRes.json();
+    assert.equal(pushData.tracking_active, true);
+    assert.ok(pushData.worker_location.distance_km > 0.5);
+    assert.ok(pushData.worker_location.eta_minutes >= 2);
+
+    // Stranger customer blocked from reading tracking
+    const strangerTrack = await fetch(`${base}/api/bookings/${bId}/tracking`, {
+      headers: { Authorization: `Bearer ${strangerToken}` }
+    });
+    assert.equal(strangerTrack.status, 403);
+
+    // Customer reads live tracking + timeline
+    const trackRes = await fetch(`${base}/api/bookings/${bId}/tracking`, {
+      headers: { Authorization: `Bearer ${custToken}` }
+    });
+    assert.equal(trackRes.status, 200);
+    const trackData = await trackRes.json();
+    assert.equal(trackData.tracking_active, true);
+    assert.equal(trackData.is_active_job, true);
+    assert.equal(trackData.worker_location.lat, 23.805);
+    assert.ok(trackData.timeline.length >= 2);
+
+    // 4. Worker pauses location sharing (stop: true)
+    const stopRes = await fetch(`${base}/api/bookings/${bId}/location`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({ stop: true })
+    });
+    assert.equal(stopRes.status, 200);
+    const pausedTrack = await (await fetch(`${base}/api/bookings/${bId}/tracking`, {
+      headers: { Authorization: `Bearer ${custToken}` }
+    })).json();
+    assert.equal(pausedTrack.tracking_active, false);
+    assert.equal(pausedTrack.worker_location, null);
+
+    // 5. Worker resumes close to customer -> triggers Arriving Soon notification
+    await fetch(`${base}/api/bookings/${bId}/location`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({ lat: 23.7960, lng: 86.4309 })
+    });
+
+    // 6. Complete booking lifecycle -> automatically wipes technician coordinates!
+    await fetch(`${base}/api/bookings/${bId}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({ code: startCode })
+    });
+    await fetch(`${base}/api/bookings/${bId}/quote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({ parts: 0 })
+    });
+    await fetch(`${base}/api/bookings/${bId}/approve`, { method: 'POST', headers: { Authorization: `Bearer ${custToken}` } });
+    await fetch(`${base}/api/bookings/${bId}/complete`, { method: 'POST', headers: { Authorization: `Bearer ${workerToken}` } });
+
+    // Privacy check: location MUST be null after job completion
+    const postTrack = await (await fetch(`${base}/api/bookings/${bId}/tracking`, {
+      headers: { Authorization: `Bearer ${custToken}` }
+    })).json();
+    assert.equal(postTrack.is_active_job, false);
+    assert.equal(postTrack.tracking_active, false);
+    assert.equal(postTrack.worker_location, null);
+
+    // Worker can no longer stream coordinates after completion (409)
+    const latePush = await fetch(`${base}/api/bookings/${bId}/location`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${workerToken}` },
+      body: JSON.stringify({ lat: 23.79, lng: 86.43 })
+    });
+    assert.equal(latePush.status, 409);
+
+    // 7. Notifications check (status notifications + arriving soon)
+    const notifRes = await fetch(`${base}/api/notifications`, {
+      headers: { Authorization: `Bearer ${custToken}` }
+    });
+    assert.equal(notifRes.status, 200);
+    const notifData = await notifRes.json();
+    assert.ok(notifData.notifications.length >= 4);
+    assert.ok(notifData.unread_count >= 4);
+
+    // Mark notifications as read
+    await fetch(`${base}/api/notifications/read`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${custToken}` },
+      body: JSON.stringify({})
+    });
+    const afterRead = await (await fetch(`${base}/api/notifications`, {
+      headers: { Authorization: `Bearer ${custToken}` }
+    })).json();
+    assert.equal(afterRead.unread_count, 0);
+  } finally {
+    server.close();
+    await db.close();
+  }
+});
+
+
 
 
 

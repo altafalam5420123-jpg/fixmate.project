@@ -2168,5 +2168,37 @@ select {
   animation: pulseRing 1.2s infinite;
 }
 
+/* ========================================================
+   PHASE 7: LIVE TECHNICIAN TRACKING & NOTIFICATIONS
+   ======================================================== */
+.live-map-box {
+  width: 100%;
+  height: 240px;
+  border-radius: 16px;
+  border: 1.5px solid var(--bd);
+  background: var(--soft);
+  overflow: hidden;
+  z-index: 1;
+}
+
+.notif-dot {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #DC2626;
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+
 
 

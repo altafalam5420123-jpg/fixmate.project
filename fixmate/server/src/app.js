@@ -508,6 +508,37 @@ function createApp(db = openDb()) {
     requested: 'Booking confirm', assigned: 'Worker assign hua', on_the_way: 'Worker raste mein hai', inspecting: 'Worker jaanch kar raha hai',
     quoted: 'Quote taiyaar', in_progress: 'Kaam chal raha hai', completed: 'Kaam poora', closed: 'Quote reject, visit fee baaki', cancelled: 'Booking cancel hui'
   };
+  const ACTIVE_TRACKING_STATUSES = ['assigned', 'on_the_way', 'inspecting', 'quoted', 'in_progress'];
+
+  const calcDistanceAndEta = (lat1, lng1, lat2, lng2) => {
+    if (lat1 == null || lng1 == null || lat2 == null || lng2 == null) {
+      return { distance_km: null, eta_minutes: null };
+    }
+    const toRad = (deg) => (deg * Math.PI) / 180;
+    const R = 6371;
+    const dLat = toRad(Number(lat2) - Number(lat1));
+    const dLng = toRad(Number(lng2) - Number(lng1));
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(Number(lat1))) * Math.cos(toRad(Number(lat2))) * Math.sin(dLng / 2) ** 2;
+    const distanceKm = 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const urbanKm = distanceKm * 1.35;
+    const eta = distanceKm <= 0.15 ? 1 : Math.max(2, Math.round((urbanKm / 22) * 60));
+    return { distance_km: Number(distanceKm.toFixed(2)), eta_minutes: eta };
+  };
+
+  const notifyUser = async ({ userId, bookingId = null, title, body, type = 'booking_status', dedupeKey = null }) => {
+    if (!userId || !body) return;
+    try {
+      await db.query(
+        `INSERT INTO notifications (user_id, booking_id, title, body, type, dedupe_key)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (user_id, dedupe_key) DO NOTHING`,
+        [userId, bookingId, String(title || 'FixMate Update').slice(0, 140), String(body).slice(0, 500), type, dedupeKey]
+      );
+    } catch {
+      // non-fatal notification failsafe
+    }
+  };
 
   const SELECT = `SELECT b.*, s.name AS service, s.cat, s.price,
     c.name AS customer_name, c.phone AS customer_phone,
@@ -520,24 +551,76 @@ function createApp(db = openDb()) {
     LEFT JOIN reviews r ON r.booking_id = b.id`;
 
   const view = (b, u) => {
-    const { start_code, customer_phone, worker_phone, ...rest } = b;
+    const {
+      start_code, customer_phone, worker_phone,
+      worker_lat, worker_lng, eta_minutes, tracking_active, location_updated_at,
+      ...rest
+    } = b;
     const address = u.role === 'worker' && b.status === 'requested'
       ? 'Address accept karne ke baad milega'
       : b.address;
     const contactPhone = u.role === 'customer'
       ? (b.worker_id && !['requested', 'cancelled'].includes(b.status) ? worker_phone : null)
       : (b.worker_id === u.id && !['requested', 'cancelled'].includes(b.status) ? customer_phone : null);
-    return { ...rest, address, contact_phone: contactPhone, label: LABEL[b.status] || b.status, ...(u.id === b.customer_id ? { start_code } : {}) };
+
+    // Strictly expose technician live coordinates ONLY during an active tracking job
+    const canSeeLocation = ACTIVE_TRACKING_STATUSES.includes(b.status) &&
+      Boolean(tracking_active) &&
+      worker_lat != null && worker_lng != null;
+
+    const trackingFields = canSeeLocation
+      ? {
+          tracking_active: true,
+          worker_lat: Number(worker_lat),
+          worker_lng: Number(worker_lng),
+          eta_minutes: eta_minutes != null ? Number(eta_minutes) : null,
+          location_updated_at
+        }
+      : {
+          tracking_active: false,
+          worker_lat: null,
+          worker_lng: null,
+          eta_minutes: null,
+          location_updated_at: null
+        };
+
+    return {
+      ...rest,
+      ...trackingFields,
+      address,
+      contact_phone: contactPhone,
+      label: LABEL[b.status] || b.status,
+      ...(u.id === b.customer_id ? { start_code } : {})
+    };
   };
 
   const load = async (id) => (await db.queryOne(`${SELECT} WHERE b.id = $1`, [+id])) || bad(404, 'Booking nahi mili');
   const mine = (b, u) => { if (u.role === 'customer' ? b.customer_id !== u.id : b.worker_id !== u.id) bad(403, 'Ye booking tumhari nahi hai'); };
 
+  const NOTIF_TEXT = {
+    assigned: ['Technician Assigned', 'Verified technician ne aapka job accept kar liya hai.'],
+    on_the_way: ['Technician On The Way', 'Aapka technician aapke ghar ke liye nikal chuka hai. Live map par track karein!'],
+    inspecting: ['Technician Arrived', 'Technician pahuch chuka hai aur inspection shuru ho gayi hai.'],
+    quoted: ['Inspection Quote Ready', 'Technician ne repair estimate bhej diya hai. Kripya approve karein.'],
+    in_progress: ['Work In Progress', 'Aapke quote ke anusaar kaam shuru ho gaya hai.'],
+    completed: ['Service Completed', 'Kaam poora ho gaya hai! Apna digital invoice aur 30-day warranty dekhein.'],
+    cancelled: ['Booking Cancelled', 'Aapki booking cancel kar di gayi hai.']
+  };
+
   const move = async (b, from, to, setFields = {}, actorId = null) => {
+    const mergedFields = { ...setFields };
+    // Immediately wipe & stop technician GPS coordinates whenever booking leaves active tracking phase
+    if (['completed', 'closed', 'cancelled'].includes(to)) {
+      mergedFields.worker_lat = null;
+      mergedFields.worker_lng = null;
+      mergedFields.tracking_active = 0;
+      mergedFields.eta_minutes = null;
+    }
+
     const fields = ['status = $1'];
     const values = [to];
     let idx = 2;
-    for (const [key, val] of Object.entries(setFields)) {
+    for (const [key, val] of Object.entries(mergedFields)) {
       fields.push(`${key} = $${idx++}`);
       values.push(val);
     }
@@ -555,10 +638,22 @@ function createApp(db = openDb()) {
     } catch {
       // audit history failsafe
     }
+
+    if (NOTIF_TEXT[to]) {
+      const [nTitle, nBody] = NOTIF_TEXT[to];
+      await notifyUser({
+        userId: b.customer_id,
+        bookingId: b.id,
+        title: `${nTitle} (#${b.id})`,
+        body: nBody,
+        type: 'booking_status',
+        dedupeKey: `booking_${b.id}_${to}`
+      });
+    }
   };
 
   app.post('/api/bookings', auth('customer'), h(async (req, res) => {
-    const { serviceId, slot, address, pay, issue_desc, photo_url, coupon_code, discount_amount, is_emergency } = req.body;
+    const { serviceId, slot, address, pay, issue_desc, photo_url, coupon_code, discount_amount, is_emergency, customer_lat, customer_lng } = req.body;
     const s = (await db.queryOne('SELECT id, price FROM services WHERE id = $1', [+serviceId])) || bad(400, 'Service nahi mili');
     if (!String(slot || '').trim() || !String(address || '').trim()) bad(400, 'Slot aur address zaruri hain');
     if (!['wallet', 'cash', 'razorpay'].includes(pay)) bad(400, 'Payment wallet, cash ya online hona chahiye');
@@ -586,12 +681,40 @@ function createApp(db = openDb()) {
     const photo = photo_url ? String(photo_url).trim().slice(0, 100000) : null;
     const emergency = is_emergency ? 1 : 0;
 
+    let cLat = null;
+    let cLng = null;
+    if (customer_lat != null && customer_lng != null) {
+      const pLat = Number(customer_lat);
+      const pLng = Number(customer_lng);
+      if (Number.isFinite(pLat) && pLat >= -90 && pLat <= 90 && Number.isFinite(pLng) && pLng >= -180 && pLng <= 180) {
+        cLat = pLat;
+        cLng = pLng;
+      }
+    } else {
+      // Check if customer has a default saved address with coordinates
+      try {
+        const defAddr = await db.queryOne('SELECT lat, lng FROM addresses WHERE user_id = $1 AND lat IS NOT NULL AND lng IS NOT NULL ORDER BY is_default DESC, id DESC LIMIT 1', [req.user.id]);
+        if (defAddr) {
+          cLat = Number(defAddr.lat);
+          cLng = Number(defAddr.lng);
+        }
+      } catch {}
+    }
+
     const ins = await db.query(
-      `INSERT INTO bookings (customer_id, service_id, slot, address, pay, start_code, issue_desc, photo_url, coupon_code, discount_amount, is_emergency)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
-      [req.user.id, s.id, String(slot).slice(0, 60), String(address).slice(0, 200), pay, code, desc, photo, validCouponCode, validDiscount, emergency]
+      `INSERT INTO bookings (customer_id, service_id, slot, address, pay, start_code, issue_desc, photo_url, coupon_code, discount_amount, is_emergency, customer_lat, customer_lng)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+      [req.user.id, s.id, String(slot).slice(0, 60), String(address).slice(0, 200), pay, code, desc, photo, validCouponCode, validDiscount, emergency, cLat, cLng]
     );
     const id = ins.rows[0].id;
+    await notifyUser({
+      userId: req.user.id,
+      bookingId: id,
+      title: `Booking Confirmed (#${id})`,
+      body: `Aapki service booking confirm ho gayi hai. Safety Code: ${code}.`,
+      type: 'booking_status',
+      dedupeKey: `booking_${id}_requested`
+    });
     ok(res, { booking: view(await load(id), req.user) }, 201);
   }));
 
@@ -684,6 +807,155 @@ function createApp(db = openDb()) {
       );
     } catch {}
     ok(res, { booking: view(await load(b.id), req.user), message: 'Booking time slot update ho gaya' });
+  }));
+
+  // ---------- Live Technician Tracking & Notifications (Phase 7) ----------
+  // Permission-based technician location update strictly scoped to active booking
+  app.post('/api/bookings/:id/location', auth('worker'), h(async (req, res) => {
+    const b = await load(req.params.id);
+    mine(b, req.user);
+
+    if (req.body && req.body.stop === true) {
+      await db.query(
+        'UPDATE bookings SET tracking_active = 0, worker_lat = NULL, worker_lng = NULL, eta_minutes = NULL WHERE id = $1',
+        [b.id]
+      );
+      return ok(res, {
+        tracking_active: false,
+        worker_location: null,
+        message: 'Live location sharing band kar di gayi'
+      });
+    }
+
+    if (!ACTIVE_TRACKING_STATUSES.includes(b.status)) {
+      bad(409, 'Live tracking sirf active job ke dauran hi chalu ho sakti hai');
+    }
+
+    const lat = Number(req.body?.lat);
+    const lng = Number(req.body?.lng);
+    if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+      bad(400, 'Valid latitude aur longitude coordinates zaroori hain');
+    }
+
+    let calc = { distance_km: null, eta_minutes: null };
+    if (b.customer_lat != null && b.customer_lng != null) {
+      calc = calcDistanceAndEta(lat, lng, b.customer_lat, b.customer_lng);
+    } else if (req.body?.eta_minutes != null && Number.isFinite(Number(req.body.eta_minutes))) {
+      calc.eta_minutes = Math.max(1, Math.min(180, Math.round(Number(req.body.eta_minutes))));
+    }
+
+    const nowIso = new Date().toISOString();
+    await db.query(
+      `UPDATE bookings
+       SET worker_lat = $1, worker_lng = $2, tracking_active = 1, eta_minutes = $3, location_updated_at = $4
+       WHERE id = $5`,
+      [lat, lng, calc.eta_minutes, nowIso, b.id]
+    );
+
+    if (calc.eta_minutes != null && calc.eta_minutes <= 5) {
+      await notifyUser({
+        userId: b.customer_id,
+        bookingId: b.id,
+        title: `Technician Arriving Soon (#${b.id})`,
+        body: `Aapka technician lagbhag ${calc.eta_minutes} minute mein ghar pahuchne wala hai.`,
+        type: 'tracking_eta',
+        dedupeKey: `booking_${b.id}_arriving_soon`
+      });
+    }
+
+    ok(res, {
+      tracking_active: true,
+      worker_location: {
+        lat,
+        lng,
+        eta_minutes: calc.eta_minutes,
+        distance_km: calc.distance_km,
+        updated_at: nowIso
+      }
+    });
+  }));
+
+  // Customer / Authorized Viewer: Read live technician tracking ONLY when active job
+  app.get('/api/bookings/:id/tracking', auth(), h(async (req, res) => {
+    const b = await load(req.params.id);
+    const isAuthorized = req.user.role === 'admin' || b.customer_id === req.user.id || b.worker_id === req.user.id;
+    if (!isAuthorized) {
+      bad(403, 'Aapko is booking ki tracking dekhne ki anumati nahi hai');
+    }
+
+    let timeline = [];
+    try {
+      const hist = await db.query(
+        'SELECT old_status, new_status, notes, created_at FROM booking_status_history WHERE booking_id = $1 ORDER BY id ASC',
+        [b.id]
+      );
+      timeline = hist.rows;
+    } catch {}
+
+    const isJobActive = ACTIVE_TRACKING_STATUSES.includes(b.status);
+    const hasCoords = isJobActive && Boolean(b.tracking_active) && b.worker_lat != null && b.worker_lng != null;
+
+    let distInfo = { distance_km: null, eta_minutes: b.eta_minutes != null ? Number(b.eta_minutes) : null };
+    if (hasCoords && b.customer_lat != null && b.customer_lng != null) {
+      distInfo = calcDistanceAndEta(Number(b.worker_lat), Number(b.worker_lng), Number(b.customer_lat), Number(b.customer_lng));
+    }
+
+    ok(res, {
+      booking_id: b.id,
+      status: b.status,
+      status_label: LABEL[b.status] || b.status,
+      is_active_job: isJobActive,
+      tracking_active: hasCoords,
+      worker_location: hasCoords ? {
+        lat: Number(b.worker_lat),
+        lng: Number(b.worker_lng),
+        eta_minutes: distInfo.eta_minutes,
+        distance_km: distInfo.distance_km,
+        updated_at: b.location_updated_at
+      } : null,
+      customer_location: b.customer_lat != null && b.customer_lng != null ? {
+        lat: Number(b.customer_lat),
+        lng: Number(b.customer_lng),
+        address: b.address
+      } : { lat: null, lng: null, address: b.address },
+      technician: b.worker_id && isJobActive ? {
+        name: b.worker_name,
+        skill: b.worker_skill,
+        verified: Boolean(b.worker_verified),
+        contact_phone: b.worker_phone
+      } : null,
+      timeline
+    });
+  }));
+
+  app.get('/api/notifications', auth(), h(async (req, res) => {
+    try {
+      const list = await db.query(
+        'SELECT id, booking_id, title, body, type, is_read, created_at FROM notifications WHERE user_id = $1 ORDER BY id DESC LIMIT 30',
+        [req.user.id]
+      );
+      const unread = await db.queryOne(
+        'SELECT COUNT(*) AS cnt FROM notifications WHERE user_id = $1 AND is_read = 0',
+        [req.user.id]
+      );
+      ok(res, { notifications: list.rows, unread_count: Number(unread?.cnt || 0) });
+    } catch {
+      ok(res, { notifications: [], unread_count: 0 });
+    }
+  }));
+
+  app.post('/api/notifications/read', auth(), h(async (req, res) => {
+    try {
+      const nId = req.body && req.body.notification_id ? Number(req.body.notification_id) : null;
+      if (nId) {
+        await db.query('UPDATE notifications SET is_read = 1 WHERE id = $1 AND user_id = $2', [nId, req.user.id]);
+      } else {
+        await db.query('UPDATE notifications SET is_read = 1 WHERE user_id = $1 AND is_read = 0', [req.user.id]);
+      }
+      ok(res, { message: 'Notifications read mark kar diye gaye' });
+    } catch {
+      ok(res, { message: 'Updated' });
+    }
   }));
 
   app.post('/api/reviews', auth('customer'), h(async (req, res) => {
@@ -1333,7 +1605,11 @@ function createApp(db = openDb()) {
       LIMIT $2
     `;
     const result = await db.query(querySql, [status || null, maxLimit]);
-    ok(res, { bookings: result.rows });
+    const sanitized = result.rows.map((b) => {
+      if (ACTIVE_TRACKING_STATUSES.includes(b.status) && b.tracking_active) return b;
+      return { ...b, worker_lat: null, worker_lng: null, eta_minutes: null, tracking_active: 0 };
+    });
+    ok(res, { bookings: sanitized });
   }));
 
   app.post('/api/admin/bookings/:id/assign', auth('admin'), h(async (req, res) => {
@@ -1354,6 +1630,15 @@ function createApp(db = openDb()) {
         'INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by_user_id, notes) VALUES ($1, $2, $3, $4, $5)',
         [b.id, b.status, newStatus, req.user.id, `Admin manual assignment: Technician ${worker.name} (ID: ${worker.id})`]
       );
+    });
+
+    await notifyUser({
+      userId: b.customer_id,
+      bookingId: b.id,
+      title: `Technician Assigned (#${b.id})`,
+      body: `${worker.name} aapki booking ke liye assign kiye gaye hain.`,
+      type: 'booking_status',
+      dedupeKey: `booking_${b.id}_admin_assigned_${worker.id}`
     });
 
     const updated = await load(b.id);
