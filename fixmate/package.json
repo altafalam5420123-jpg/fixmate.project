@@ -1,0 +1,22 @@
+{
+  "name": "fixmate-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FixMate Android app wrapper",
+  "scripts": {
+    "api:config": "node scripts/generate-api-config.js",
+    "icons:generate": "node scripts/generate-icons.js",
+    "android:add": "npm run api:config && cap add android",
+    "android:sync": "npm run api:config && cap sync android",
+    "android:open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.4.3",
+    "dotenv": "^16.6.1",
+    "sharp": "^0.35.5"
+  }
+}

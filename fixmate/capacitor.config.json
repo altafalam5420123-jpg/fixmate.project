@@ -1,0 +1,8 @@
+{
+  "appId": "in.fixmate.app",
+  "appName": "FixMate",
+  "webDir": "client",
+  "server": {
+    "androidScheme": "https"
+  }
+}
