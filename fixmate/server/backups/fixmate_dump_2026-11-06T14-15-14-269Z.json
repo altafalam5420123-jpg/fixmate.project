@@ -1,0 +1,392 @@
+{
+  "created_at": "2026-11-06T14:15:14.349Z",
+  "sqlite_file": "C:\\Users\\Altaf Alam\\OneDrive\\Pictures\\phish.apk2\\fixmate\\fixmate\\server\\fixmate.sqlite",
+  "tables": {
+    "users": [
+      {
+        "id": 1,
+        "phone": "7209612650",
+        "name": "Altaf alam",
+        "role": "customer",
+        "skill": null,
+        "wallet": 150,
+        "online": 1,
+        "token_version": 0
+      },
+      {
+        "id": 2,
+        "phone": "9800000001",
+        "name": "Sunil Kumar (Verified Pro)",
+        "role": "worker",
+        "skill": "Electrician",
+        "wallet": 1000,
+        "online": 1,
+        "token_version": 0
+      },
+      {
+        "id": 3,
+        "phone": "9800000002",
+        "name": "Ramesh Verma (Senior Plumber)",
+        "role": "worker",
+        "skill": "Plumber",
+        "wallet": 1000,
+        "online": 1,
+        "token_version": 0
+      },
+      {
+        "id": 4,
+        "phone": "9800000003",
+        "name": "Mohammad Imran (AC Specialist)",
+        "role": "worker",
+        "skill": "AC Repair",
+        "wallet": 1000,
+        "online": 1,
+        "token_version": 0
+      },
+      {
+        "id": 5,
+        "phone": "9800000004",
+        "name": "Vikas Sharma (Electronics Expert)",
+        "role": "worker",
+        "skill": "TV Repair",
+        "wallet": 1000,
+        "online": 1,
+        "token_version": 0
+      },
+      {
+        "id": 6,
+        "phone": "9800000005",
+        "name": "Manoj Mahato (Certified Mechanic)",
+        "role": "worker",
+        "skill": "Mechanic",
+        "wallet": 1000,
+        "online": 1,
+        "token_version": 0
+      },
+      {
+        "id": 7,
+        "phone": "9800000006",
+        "name": "Priya Kumari (B.Tech, Maths/Science)",
+        "role": "worker",
+        "skill": "Home Tutor",
+        "wallet": 1000,
+        "online": 1,
+        "token_version": 0
+      },
+      {
+        "id": 8,
+        "phone": "9999999999",
+        "name": "Rahul Kumar",
+        "role": "customer",
+        "skill": null,
+        "wallet": 2000,
+        "online": 1,
+        "token_version": 0
+      }
+    ],
+    "otps": [],
+    "services": [
+      {
+        "id": 1,
+        "cat": "Electrician",
+        "name": "Switch aur socket repair",
+        "price": 149,
+        "rating": 4.8
+      },
+      {
+        "id": 2,
+        "cat": "Electrician",
+        "name": "Fan install ya repair",
+        "price": 199,
+        "rating": 4.8
+      },
+      {
+        "id": 3,
+        "cat": "Electrician",
+        "name": "Inverter aur wiring check",
+        "price": 249,
+        "rating": 4.7
+      },
+      {
+        "id": 4,
+        "cat": "Plumber",
+        "name": "Tap aur leakage repair",
+        "price": 149,
+        "rating": 4.8
+      },
+      {
+        "id": 5,
+        "cat": "Plumber",
+        "name": "Bathroom fitting",
+        "price": 299,
+        "rating": 4.7
+      },
+      {
+        "id": 6,
+        "cat": "Plumber",
+        "name": "Water tank cleaning",
+        "price": 499,
+        "rating": 4.8
+      },
+      {
+        "id": 7,
+        "cat": "AC Repair",
+        "name": "Split AC service",
+        "price": 499,
+        "rating": 4.9
+      },
+      {
+        "id": 8,
+        "cat": "AC Repair",
+        "name": "AC gas refill",
+        "price": 1499,
+        "rating": 4.7
+      },
+      {
+        "id": 9,
+        "cat": "TV Repair",
+        "name": "TV diagnosis",
+        "price": 199,
+        "rating": 4.7
+      },
+      {
+        "id": 10,
+        "cat": "TV Repair",
+        "name": "TV wall mount",
+        "price": 349,
+        "rating": 4.8
+      },
+      {
+        "id": 11,
+        "cat": "Mechanic",
+        "name": "Bike service (pickup aur drop)",
+        "price": 399,
+        "rating": 4.8
+      },
+      {
+        "id": 12,
+        "cat": "Mechanic",
+        "name": "Car check-up",
+        "price": 599,
+        "rating": 4.6
+      },
+      {
+        "id": 13,
+        "cat": "Home Tutor",
+        "name": "Class 6 se 10 Maths aur Science",
+        "price": 1500,
+        "rating": 4.9
+      },
+      {
+        "id": 14,
+        "cat": "Home Tutor",
+        "name": "English aur coding basics",
+        "price": 1200,
+        "rating": 4.8
+      }
+    ],
+    "wallet_tx": [
+      {
+        "id": 1,
+        "user_id": 1,
+        "label": "Welcome bonus",
+        "amount": 150,
+        "created_at": "2026-10-05 08:57:49"
+      }
+    ],
+    "otp_rate_limits": [
+      {
+        "phone_hash": "52b3ac258e7e1fe3f8d6fe9da43e261de9c37c88804b797aed7ce02e52e25433",
+        "window_start": 1793698831655,
+        "send_count": 2,
+        "wrong_count": 0,
+        "updated_at": 1793699349523
+      }
+    ],
+    "otp_daily_limits": [
+      {
+        "day": "2026-11-03",
+        "send_count": 2
+      }
+    ],
+    "payment_orders": [],
+    "bookings": [
+      {
+        "id": 1,
+        "customer_id": 8,
+        "worker_id": null,
+        "service_id": 7,
+        "slot": "Abhi (60 min mein)",
+        "address": "Bank More, Dhanbad",
+        "pay": "wallet",
+        "status": "requested",
+        "start_code": "2952",
+        "start_code_tries": 0,
+        "parts": 0,
+        "total": 0,
+        "paid": 0,
+        "created_at": "2026-11-03 09:27:40"
+      },
+      {
+        "id": 2,
+        "customer_id": 8,
+        "worker_id": null,
+        "service_id": 7,
+        "slot": "Abhi (60 min mein)",
+        "address": "Bank More, Dhanbad",
+        "pay": "wallet",
+        "status": "requested",
+        "start_code": "9386",
+        "start_code_tries": 0,
+        "parts": 0,
+        "total": 0,
+        "paid": 0,
+        "created_at": "2026-11-03 09:28:20"
+      },
+      {
+        "id": 3,
+        "customer_id": 8,
+        "worker_id": null,
+        "service_id": 7,
+        "slot": "Abhi (60 min mein)",
+        "address": "Bank More, Dhanbad",
+        "pay": "wallet",
+        "status": "cancelled",
+        "start_code": "7082",
+        "start_code_tries": 0,
+        "parts": 0,
+        "total": 0,
+        "paid": 0,
+        "created_at": "2026-11-03 09:28:37"
+      },
+      {
+        "id": 4,
+        "customer_id": 1,
+        "worker_id": null,
+        "service_id": 2,
+        "slot": "Abhi (60 min mein)",
+        "address": "Dhanbad, Jharkhand",
+        "pay": "wallet",
+        "status": "cancelled",
+        "start_code": "5721",
+        "start_code_tries": 0,
+        "parts": 0,
+        "total": 0,
+        "paid": 0,
+        "created_at": "2026-11-03 09:51:03"
+      },
+      {
+        "id": 5,
+        "customer_id": 1,
+        "worker_id": null,
+        "service_id": 7,
+        "slot": "Abhi (60 min mein)",
+        "address": "Dhanbad, Jharkhand",
+        "pay": "wallet",
+        "status": "requested",
+        "start_code": "5353",
+        "start_code_tries": 0,
+        "parts": 0,
+        "total": 0,
+        "paid": 0,
+        "created_at": "2026-11-03 10:16:10"
+      },
+      {
+        "id": 6,
+        "customer_id": 1,
+        "worker_id": null,
+        "service_id": 7,
+        "slot": "Abhi (60 min mein)",
+        "address": "Dhanbad, Jharkhand",
+        "pay": "wallet",
+        "status": "requested",
+        "start_code": "2147",
+        "start_code_tries": 0,
+        "parts": 0,
+        "total": 0,
+        "paid": 0,
+        "created_at": "2026-11-03 10:16:41"
+      },
+      {
+        "id": 7,
+        "customer_id": 1,
+        "worker_id": null,
+        "service_id": 7,
+        "slot": "Abhi (60 min mein)",
+        "address": "Dhanbad, Jharkhand",
+        "pay": "wallet",
+        "status": "requested",
+        "start_code": "7080",
+        "start_code_tries": 0,
+        "parts": 0,
+        "total": 0,
+        "paid": 0,
+        "created_at": "2026-11-03 10:17:49"
+      },
+      {
+        "id": 8,
+        "customer_id": 1,
+        "worker_id": null,
+        "service_id": 7,
+        "slot": "Abhi (60 min mein)",
+        "address": "Dhanbad, Jharkhand",
+        "pay": "wallet",
+        "status": "requested",
+        "start_code": "8123",
+        "start_code_tries": 0,
+        "parts": 0,
+        "total": 0,
+        "paid": 0,
+        "created_at": "2026-11-03 10:18:21"
+      },
+      {
+        "id": 9,
+        "customer_id": 1,
+        "worker_id": null,
+        "service_id": 2,
+        "slot": "Abhi (60 min mein)",
+        "address": "Dhanbad, Jharkhand",
+        "pay": "wallet",
+        "status": "requested",
+        "start_code": "3174",
+        "start_code_tries": 0,
+        "parts": 0,
+        "total": 0,
+        "paid": 0,
+        "created_at": "2026-11-03 10:18:40"
+      },
+      {
+        "id": 10,
+        "customer_id": 1,
+        "worker_id": null,
+        "service_id": 7,
+        "slot": "Abhi (60 min mein)",
+        "address": "Dhanbad, Jharkhand",
+        "pay": "wallet",
+        "status": "requested",
+        "start_code": "3163",
+        "start_code_tries": 0,
+        "parts": 0,
+        "total": 0,
+        "paid": 0,
+        "created_at": "2026-11-03 10:29:38"
+      },
+      {
+        "id": 11,
+        "customer_id": 1,
+        "worker_id": null,
+        "service_id": 7,
+        "slot": "Abhi (60 min mein)",
+        "address": "Dhanbad, Jharkhand",
+        "pay": "wallet",
+        "status": "requested",
+        "start_code": "2745",
+        "start_code_tries": 0,
+        "parts": 0,
+        "total": 0,
+        "paid": 0,
+        "created_at": "2026-11-03 21:22:09"
+      }
+    ]
+  }
+}
