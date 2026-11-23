@@ -8,6 +8,12 @@
     saved = localStorage.getItem('fm_api_base');
   } catch (e) {}
 
+  // If saved contains an old local development IP or :3000, clear it so native/production users connect to Render
+  if (saved && (saved.includes(':3000') || saved.includes('192.168.') || saved.includes('10.') || saved.includes('localhost') || saved.includes('127.0.0.1'))) {
+    try { localStorage.removeItem('fm_api_base'); } catch (e) {}
+    saved = null;
+  }
+
   const isBrowser = typeof window !== 'undefined' && typeof location !== 'undefined';
 
   // Detect if running on localhost / local development server

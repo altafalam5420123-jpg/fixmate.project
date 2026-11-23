@@ -3234,16 +3234,21 @@ function voiceDiag() {
 function getApiBase() {
   let b = '';
   try { b = localStorage.getItem('fm_api_base'); } catch (e) {}
+  if (b && (b.includes(':3000') || b.includes('192.168.') || b.includes('10.') || b.includes('localhost') || b.includes('127.0.0.1'))) {
+    try { localStorage.removeItem('fm_api_base'); } catch (e) {}
+    b = '';
+  }
   if (!b) b = window.API_BASE_URL || '';
   if (!b && typeof location !== 'undefined' && location.origin && location.origin.startsWith('http')) {
     b = location.origin;
   }
+  if (!b) b = 'https://fixmate-server-hx4n.onrender.com';
   return String(b).trim().replace(/\/+$/, '');
 }
 
 function getServerStatusLabel() {
   const b = getApiBase();
-  if (!b) return 'Localhost';
+  if (!b) return 'Render (Online)';
   if (b.includes('onrender.com')) return 'Render (Online)';
   if (b.includes('localhost') || b.includes('127.0.0.1')) return 'Localhost';
   try {
@@ -3256,11 +3261,17 @@ function getServerStatusLabel() {
 
 function setCustomServerUrl() {
   const cur = getApiBase() || 'https://fixmate-server-hx4n.onrender.com';
-  const u = prompt('FixMate Backend Server URL daalein (e.g. https://fixmate-server-hx4n.onrender.com):', cur);
-  if (u !== null && u.trim()) {
-    localStorage.setItem('fm_api_base', u.trim());
-    window.API_BASE_URL = u.trim();
-    toast('Server URL save ho gaya: ' + u.trim());
+  const u = prompt('FixMate Backend Server URL daalein (Khali chhod kar OK karenge toh Render Cloud par reset ho jayega):', cur);
+  if (u !== null) {
+    if (!u.trim() || u.trim().toLowerCase() === 'reset' || u.trim().toLowerCase() === 'default') {
+      try { localStorage.removeItem('fm_api_base'); } catch (e) {}
+      window.API_BASE_URL = 'https://fixmate-server-hx4n.onrender.com';
+      toast('Render Cloud Server par reset ho gaya!');
+    } else {
+      localStorage.setItem('fm_api_base', u.trim());
+      window.API_BASE_URL = u.trim();
+      toast('Server URL save ho gaya: ' + u.trim());
+    }
     setTimeout(() => location.reload(), 800);
   }
 }
@@ -3280,7 +3291,7 @@ async function api(m, p, b) {
     });
   } catch (e) {
     if (e.name === 'AbortError') throw new Error('Backend se response nahi mila. Thodi der baad try karo.');
-    throw new Error('Backend se connection nahi hua. Check karein backend server chal raha hai aur phone same Wi-Fi pe hai.');
+    throw new Error('Server se connection nahi hua. Check karein internet chal raha hai ya Server URL sahi hai.');
   } finally {
     clearTimeout(timeout);
   }
