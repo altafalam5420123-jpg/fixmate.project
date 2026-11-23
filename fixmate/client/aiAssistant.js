@@ -37,6 +37,9 @@
     let b = '';
     try { b = localStorage.getItem('fm_api_base'); } catch (e) {}
     if (!b) b = window.API_BASE_URL || '';
+    if (!b && typeof location !== 'undefined' && location.origin && location.origin.startsWith('http')) {
+      b = location.origin;
+    }
     return String(b).trim().replace(/\/+$/, '');
   }
 

@@ -289,7 +289,7 @@ function login() {
       <div class="mut" style="margin:10px 0 16px">Hum OTP bhejenge. Aapka number bilkul surakshit rahega.</div>
       <button class="btn acc" onclick="sendOtp()">OTP Bhejo</button>
       <div style="text-align:center;margin-top:16px">
-        <button class="btn sm ghost" style="display:inline-flex;width:auto;padding:6px 14px;font-size:12px;opacity:0.85" onclick="setCustomServerUrl()">⚙️ Server: ${esc(getApiBase() || 'Localhost')}</button>
+        <button class="btn sm ghost" style="display:inline-flex;width:auto;padding:6px 14px;font-size:12px;opacity:0.85" onclick="setCustomServerUrl()">⚙️ Server: ${esc(getServerStatusLabel())}</button>
       </div>
     </div>`;
   }
@@ -3235,12 +3235,28 @@ function getApiBase() {
   let b = '';
   try { b = localStorage.getItem('fm_api_base'); } catch (e) {}
   if (!b) b = window.API_BASE_URL || '';
+  if (!b && typeof location !== 'undefined' && location.origin && location.origin.startsWith('http')) {
+    b = location.origin;
+  }
   return String(b).trim().replace(/\/+$/, '');
 }
 
+function getServerStatusLabel() {
+  const b = getApiBase();
+  if (!b) return 'Localhost';
+  if (b.includes('onrender.com')) return 'Render (Online)';
+  if (b.includes('localhost') || b.includes('127.0.0.1')) return 'Localhost';
+  try {
+    const u = new URL(b);
+    return u.host;
+  } catch {
+    return b;
+  }
+}
+
 function setCustomServerUrl() {
-  const cur = getApiBase() || 'http://192.168.101.24:3000';
-  const u = prompt('FixMate Backend Server URL daalein (e.g. http://192.168.101.24:3000):', cur);
+  const cur = getApiBase() || 'https://fixmate-server-hx4n.onrender.com';
+  const u = prompt('FixMate Backend Server URL daalein (e.g. https://fixmate-server-hx4n.onrender.com):', cur);
   if (u !== null && u.trim()) {
     localStorage.setItem('fm_api_base', u.trim());
     window.API_BASE_URL = u.trim();

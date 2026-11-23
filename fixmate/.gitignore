@@ -1,6 +1,5 @@
 node_modules/
 .env
-client/config.js
 android/.gradle/
 android/local.properties
 android/.idea/
