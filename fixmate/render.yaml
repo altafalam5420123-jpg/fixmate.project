@@ -9,7 +9,7 @@ services:
     startCommand: cd server && node src/server.js
     envVars:
       - key: NODE_ENV
-        value: production
+        value: development
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
@@ -17,13 +17,12 @@ services:
       - key: OTP_HMAC_KEY
         generateValue: true
       - key: CLIENT_ORIGIN
-        value: https://localhost
+        value: "*"
       - key: TRUST_PROXY
         value: 1
       - key: DEV_SHOW_OTP
-        value: 0
+        value: 1
       - key: ALLOW_DEMO_TOPUP
-        value: 0
+        value: 1
       - key: GEMINI_API_KEY
         sync: false
-

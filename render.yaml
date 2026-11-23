@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: fixmate-server
+    env: node
+    plan: free
+    region: singapore
+    rootDir: fixmate
+    buildCommand: cd server && npm install --omit=dev
+    startCommand: cd server && node src/server.js
+    envVars:
+      - key: NODE_ENV
+        value: development
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: OTP_HMAC_KEY
+        generateValue: true
+      - key: CLIENT_ORIGIN
+        value: "*"
+      - key: TRUST_PROXY
+        value: 1
+      - key: DEV_SHOW_OTP
+        value: 1
+      - key: ALLOW_DEMO_TOPUP
+        value: 1
+      - key: GEMINI_API_KEY
+        sync: false
