@@ -298,7 +298,7 @@ function login() {
     const cd = (L.cooldown || 0) > 0;
     return `<button class="back" onclick="S.lg.step=0;render()">← Number badlo</button>
     <h2 style="font-size:22px">OTP daalein</h2>
-    <div class="mut">+91 ${mk(L.ph)} pe 6 digit OTP bheja gaya. 60 second mein expire hoga.</div>
+    <div class="mut">+91 ${mk(L.ph)} pe 6 digit OTP bheja gaya hai.</div>
     <div class="card" style="margin-top:14px;border-color:var(--sec)">${L.dev ? `Demo OTP: <b style="color:var(--sec);font-size:18px">${esc(L.dev)}</b>` : 'OTP SMS par bheja gaya hai.'}</div>
     <input id="otp" type="tel" inputmode="numeric" maxlength="6" placeholder="------" style="margin:8px 0 14px;text-align:center;font-size:28px;letter-spacing:10px;font-weight:800">
     <button class="btn acc" onclick="verOtp()">Verify Karein</button>

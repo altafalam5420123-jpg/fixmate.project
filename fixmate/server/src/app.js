@@ -10,12 +10,14 @@ const rateLimit = require('express-rate-limit');
 const { openDb, CATEGORIES } = require('./db');
 const { createAiRouter } = require('./aiRoutes');
 const { smartFindService, isOpenAIRealtimeConfigured, isGeminiConfigured } = require('./aiService');
+const { isMsg91Configured, getOtpExpiryMinutes, sendOtp: sendMsg91Otp, verifyOtp: verifyMsg91Otp } = require('./msg91Service');
 
 const COMMISSION = 0.15; // platform cut from worker earnings
 const VISIT_FEE = 99; // charged if customer rejects the quote
 const EMERGENCY_FEE = 99; // transparent priority surcharge for live emergency bookings
 const CASHBACK = 0.05;
-const OTP_TTL = 60_000, OTP_RESEND = 20_000, OTP_MAX_TRIES = 3;
+const OTP_RESEND = 20_000, OTP_MAX_TRIES = 3;
+const getOtpTtlMs = () => getOtpExpiryMinutes() * 60_000;
 const OTP_WINDOW = 60 * 60_000, OTP_PHONE_SEND_MAX = 5, OTP_PHONE_WRONG_MAX = 10;
 const PROD = process.env.NODE_ENV === 'production';
 const DEV_SHOW_OTP = process.env.DEV_SHOW_OTP === '1';
@@ -154,6 +156,7 @@ function createApp(db = openDb()) {
       integrations: {
         openai_realtime: isOpenAIRealtimeConfigured() ? 'ready' : 'BLOCKED',
         gemini_chat: isGeminiConfigured() ? 'ready' : 'BLOCKED',
+        msg91_sms_otp: isMsg91Configured() ? 'ready' : 'BLOCKED',
         twilio_sms_otp: twilioReady ? 'ready' : 'BLOCKED',
         razorpay_checkout: razorpayReady ? 'ready' : 'BLOCKED',
         razorpay_webhook: razorpayWebhookReady ? 'ready' : 'BLOCKED',
@@ -264,18 +267,40 @@ function createApp(db = openDb()) {
     const phone = String(req.body.phone || '');
     if (!PHONE.test(phone)) bad(400, 'Sahi 10 digit mobile number daalo');
     const showDevOtp = !PROD && DEV_SHOW_OTP;
-    if (!showDevOtp && (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_PHONE_NUMBER))
-      bad(503, 'OTP SMS provider configure nahi hai; local demo ke liye DEV_SHOW_OTP=1 set karo');
+    const msg91Ready = isMsg91Configured();
+    const twilioReady = Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER);
+    if (!showDevOtp && !msg91Ready && !twilioReady)
+      bad(503, 'OTP SMS provider configure nahi hai; MSG91_AUTH_KEY aur MSG91_TEMPLATE_ID set karo ya local demo ke liye DEV_SHOW_OTP=1 set karo');
     const prev = await db.queryOne('SELECT last_sent FROM otps WHERE phone = $1', [phone]);
     if (prev && Date.now() - Number(prev.last_sent) < OTP_RESEND) bad(429, 'Thoda ruko, phir dobara OTP mangao');
     await consumeOtpSendBudget(phone);
-    const otp = String(crypto.randomInt(100000, 1000000)), salt = crypto.randomBytes(8).toString('hex');
+    const ttl = getOtpTtlMs();
+    const salt = crypto.randomBytes(8).toString('hex');
+
+    if (msg91Ready && !showDevOtp) {
+      try {
+        await sendMsg91Otp(phone);
+      } catch (error) {
+        await db.query('DELETE FROM otps WHERE phone = $1', [phone]);
+        throw error;
+      }
+      await db.query(`
+        INSERT INTO otps (phone, hash, salt, exp, tries, last_sent, hash_version)
+        VALUES ($1, $2, $3, $4, 0, $5, 1)
+        ON CONFLICT (phone) DO UPDATE SET
+          hash = EXCLUDED.hash, salt = EXCLUDED.salt, exp = EXCLUDED.exp, tries = 0, last_sent = EXCLUDED.last_sent, hash_version = 1
+      `, [phone, 'MSG91_PENDING', salt, Date.now() + ttl, Date.now()]);
+      ok(res, { message: 'OTP bhej diya' });
+      return;
+    }
+
+    const otp = String(crypto.randomInt(100000, 1000000));
     await db.query(`
       INSERT INTO otps (phone, hash, salt, exp, tries, last_sent, hash_version)
       VALUES ($1, $2, $3, $4, 0, $5, 1)
       ON CONFLICT (phone) DO UPDATE SET
         hash = EXCLUDED.hash, salt = EXCLUDED.salt, exp = EXCLUDED.exp, tries = 0, last_sent = EXCLUDED.last_sent, hash_version = 1
-    `, [phone, otpHmac(otpHmacKey, phone, otp), salt, Date.now() + OTP_TTL, Date.now()]);
+    `, [phone, otpHmac(otpHmacKey, phone, otp), salt, Date.now() + ttl, Date.now()]);
 
     if (!showDevOtp) {
       try {
@@ -300,16 +325,31 @@ function createApp(db = openDb()) {
     const rate = await db.queryOne('SELECT window_start, wrong_count FROM otp_rate_limits WHERE phone_hash = $1', [phoneHash(normalizedPhone)]);
     if (rate && Date.now() - Number(rate.window_start) < OTP_WINDOW && rate.wrong_count >= OTP_PHONE_WRONG_MAX)
       bad(429, 'Is number par galat OTP tries ki limit poori ho gayi');
-    const digest = row.hash_version === 1 ? otpHmac(otpHmacKey, normalizedPhone, code) : sha(row.salt, code);
-    if (!same(row.hash, digest)) {
-      await recordWrongOtp(normalizedPhone, row);
-      bad(400, 'Galat OTP');
+
+    if (row.hash === 'MSG91_VERIFIED_PENDING_PROFILE') {
+      // Previously verified by MSG91, now submitting name and role for registration
+    } else if (row.hash === 'MSG91_PENDING') {
+      const verifyRes = await verifyMsg91Otp(normalizedPhone, code);
+      if (!verifyRes.success) {
+        await recordWrongOtp(normalizedPhone, row);
+        bad(400, verifyRes.message || 'Galat OTP');
+      }
+    } else {
+      const digest = row.hash_version === 1 ? otpHmac(otpHmacKey, normalizedPhone, code) : sha(row.salt, code);
+      if (!same(row.hash, digest)) {
+        await recordWrongOtp(normalizedPhone, row);
+        bad(400, 'Galat OTP');
+      }
     }
+
     let user = await db.queryOne('SELECT * FROM users WHERE phone = $1', [row.phone]), isNew = false;
     if (!user) {
-      // OTP stays valid so the client can resend the same OTP together with the profile.
-      if (String(name || '').trim().length < 2 || !['customer', 'worker', 'admin'].includes(role))
+      if (String(name || '').trim().length < 2 || !['customer', 'worker', 'admin'].includes(role)) {
+        if (row.hash === 'MSG91_PENDING') {
+          await db.query('UPDATE otps SET hash = $1 WHERE phone = $2', ['MSG91_VERIFIED_PENDING_PROFILE', row.phone]);
+        }
         return res.status(400).json({ success: false, needsProfile: true, message: 'Naam aur role chuno' });
+      }
       if (role === 'worker' && !CATEGORIES.includes(skill)) bad(400, 'Worker ke liye sahi kaam chuno');
       const insRes = await db.query(
         'INSERT INTO users (phone, name, role, skill, wallet) VALUES ($1, $2, $3, $4, 0) RETURNING id',
