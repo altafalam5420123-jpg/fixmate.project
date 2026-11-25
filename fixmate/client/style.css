@@ -544,6 +544,91 @@ h2 {
   font-size: 14px;
 }
 
+/* Modern Circular Back Navigation Button */
+.btn-circle-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  min-width: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--card, #FFFFFF);
+  border: 1.5px solid var(--bdr, #E2E8F0);
+  color: var(--txt, #0F172A);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+  user-select: none;
+}
+.btn-circle-back:hover {
+  background: var(--sec, #00BFA5);
+  color: #FFFFFF;
+  border-color: var(--sec, #00BFA5);
+  transform: translateX(-3px);
+  box-shadow: 0 4px 12px rgba(0, 191, 165, 0.25);
+}
+.btn-circle-back:active {
+  transform: scale(0.95);
+}
+.btn-circle-back svg {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+.btn-circle-back:hover svg {
+  transform: translateX(-2px);
+}
+.btn-circle-back-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.login-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0 14px;
+  margin-bottom: 4px;
+}
+.btn-help-link {
+  background: none;
+  border: none;
+  color: var(--mut, #64748B);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+.btn-help-link:hover {
+  color: var(--pri, #0F172A);
+  background: rgba(0, 0, 0, 0.04);
+}
+:root[data-theme="dark"] .btn-help-link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+}
+
+:root[data-theme="dark"] .btn-circle-back, @media (prefers-color-scheme: dark) {
+  .btn-circle-back {
+    background: #1E293B;
+    border-color: #334155;
+    color: #F8FAFC;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+  .btn-circle-back:hover {
+    background: #00BFA5;
+    border-color: #00BFA5;
+    color: #FFFFFF;
+  }
+}
+
 :root[data-theme="dark"] .back, @media (prefers-color-scheme: dark) {
   .back { color: #00BFA5; }
 }

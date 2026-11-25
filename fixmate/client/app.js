@@ -181,10 +181,58 @@ function theme() {
 }
 
 function go(s) {
+  if (S.scr && S.scr !== s) {
+    if (!S.history) S.history = [];
+    S.history.push(S.scr);
+    if (S.history.length > 25) S.history.shift();
+  }
   S.scr = s;
   S.modal = null;
   render();
   scrollTo(0, 0);
+}
+
+function navBack(fallbackScreen = 'home') {
+  // If inside multi-step login (step 1 or 2), step back to phone input
+  if (S.scr === 'login' && S.lg && S.lg.step > 0) {
+    S.lg.step--;
+    render();
+    return;
+  }
+  // Try app internal navigation history
+  if (S.history && S.history.length > 0) {
+    const prev = S.history.pop();
+    if (prev && prev !== S.scr) {
+      S.scr = prev;
+      S.modal = null;
+      render();
+      scrollTo(0, 0);
+      return;
+    }
+  }
+  // Try browser history when safe
+  if (typeof window !== 'undefined' && window.history && window.history.length > 1) {
+    window.history.back();
+    return;
+  }
+  // Safe fallback to role dashboard or fallbackScreen
+  if (S.user) {
+    S.scr = S.user.role === 'worker' ? 'wk' : (S.user.role === 'admin' ? 'adm' : (S.user.role === 'operations' ? 'ops' : 'home'));
+  } else {
+    S.scr = fallbackScreen || 'home';
+  }
+  S.modal = null;
+  render();
+  scrollTo(0, 0);
+}
+
+function circularBackBtn(fallback = 'home', label = '') {
+  return `<button type="button" class="btn-circle-back" onclick="navBack('${fallback}')" aria-label="Wapas jayein" title="Wapas jayein">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19 12H5M12 19l-7-7 7-7"/>
+    </svg>
+    ${label ? `<span class="btn-circle-back-label">${esc(label)}</span>` : ''}
+  </button>`;
 }
 
 /* ========================================================
@@ -271,10 +319,46 @@ function finishOnboarding() {
    ======================================================== */
 const mk = (p) => p.slice(0, 2) + 'XXXXXX' + p.slice(-2);
 
+function showLoginHelp() {
+  modal(`
+    <div style="padding:10px 4px">
+      <h3 style="margin-bottom:8px">Login & OTP Madad 🤝</h3>
+      <p style="font-size:14px;color:var(--mut);line-height:1.5">
+        <b>1. OTP SMS nahi aaya?</b><br>
+        • Check karein phone network active hai.<br>
+        • 20s cooldown baad "OTP dobara bhejo" dabayein.<br>
+        • Helpdesk: <b>support@fixmate.in</b>
+      </p>
+      <p style="font-size:14px;color:var(--mut);line-height:1.5;margin-top:10px">
+        <b>2. Number galat daal diya?</b><br>
+        • Upar gol back button (←) dabakar sahi 10-digit number enter karein.
+      </p>
+      <button class="btn acc" style="margin-top:16px" onclick="closeModal()">Samajh Gaya</button>
+    </div>
+  `);
+}
+
+function toggleOtpVisibility() {
+  const el = $('otp');
+  const btn = $('btn-otp-eye');
+  if (!el) return;
+  if (el.type === 'password') {
+    el.type = 'tel';
+    if (btn) btn.textContent = '👁️';
+  } else {
+    el.type = 'password';
+    if (btn) btn.textContent = '🙈';
+  }
+}
+
 function login() {
   const L = S.lg;
   if (L.step === 0) {
-    return `<div class="hd hero">
+    return `<div class="login-top-bar">
+      ${circularBackBtn('home', 'Wapas')}
+      <button class="btn-help-link" onclick="showLoginHelp()" aria-label="Madad chahiye?">❓ Madad</button>
+    </div>
+    <div class="hd hero">
       <div class="splash-icon">${ic('spark', 28)}</div>
       <div class="brand-badge">${ic('shield', 13)} 100% Trusted Service</div>
       <b style="font-size:32px;display:block;letter-spacing:-0.03em;margin-top:2px">${BRAND}</b>
@@ -284,10 +368,10 @@ function login() {
       <h2>Mobile number</h2>
       <div class="row">
         <span class="badge" style="padding:13px 14px;font-size:14px">+91</span>
-        <input id="ph" type="tel" inputmode="numeric" maxlength="10" placeholder="10 digit number" value="${esc(L.ph)}" style="margin:0">
+        <input id="ph" type="tel" inputmode="numeric" maxlength="10" placeholder="10 digit number" value="${esc(L.ph)}" style="margin:0" onkeydown="if(event.key==='Enter') sendOtp()">
       </div>
-      <div class="mut" style="margin:10px 0 16px">Hum OTP bhejenge. Aapka number bilkul surakshit rahega.</div>
-      <button class="btn acc" onclick="sendOtp()">OTP Bhejo</button>
+      <div class="mut" style="margin:10px 0 16px">Hum 6-digit SMS OTP bhejenge. Aapka number 100% surakshit rahega.</div>
+      <button id="btn-send-otp" class="btn acc" onclick="sendOtp()">OTP Bhejo</button>
       <div style="text-align:center;margin-top:16px">
         <button class="btn sm ghost" style="display:inline-flex;width:auto;padding:6px 14px;font-size:12px;opacity:0.85" onclick="setCustomServerUrl()">⚙️ Server: ${esc(getServerStatusLabel())}</button>
       </div>
@@ -296,23 +380,32 @@ function login() {
 
   if (L.step === 1) {
     const cd = (L.cooldown || 0) > 0;
-    return `<button class="back" onclick="S.lg.step=0;render()">← Number badlo</button>
-    <h2 style="font-size:22px">OTP daalein</h2>
+    return `<div class="login-top-bar">
+      ${circularBackBtn('login', 'Number badlo')}
+      <button class="btn-help-link" onclick="showLoginHelp()" aria-label="OTP help">❓ Help</button>
+    </div>
+    <h2 style="font-size:22px;margin-top:4px">OTP daalein</h2>
     <div class="mut">+91 ${mk(L.ph)} pe 6 digit OTP bheja gaya hai.</div>
     <div class="card" style="margin-top:14px;border-color:var(--sec)">${L.dev ? `Demo OTP: <b style="color:var(--sec);font-size:18px">${esc(L.dev)}</b>` : 'OTP SMS par bheja gaya hai.'}</div>
-    <input id="otp" type="tel" inputmode="numeric" maxlength="6" placeholder="------" style="margin:8px 0 14px;text-align:center;font-size:28px;letter-spacing:10px;font-weight:800">
-    <button class="btn acc" onclick="verOtp()">Verify Karein</button>
+    <div style="position:relative;margin:8px 0 14px">
+      <input id="otp" type="tel" inputmode="numeric" maxlength="6" placeholder="------" style="margin:0;text-align:center;font-size:28px;letter-spacing:10px;font-weight:800;padding-right:44px" onkeydown="if(event.key==='Enter') verOtp()">
+      <button id="btn-otp-eye" type="button" onclick="toggleOtpVisibility()" title="Show/Hide OTP" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:18px;cursor:pointer;opacity:0.75;padding:4px">👁️</button>
+    </div>
+    <button id="btn-ver-otp" class="btn acc" onclick="verOtp()">Verify Karein</button>
     <button id="resend-btn" class="btn ghost" style="margin-top:10px;${cd ? 'opacity:0.6;cursor:not-allowed' : ''}" ${cd ? 'disabled' : ''} onclick="sendOtp(1)">${cd ? `OTP dobara bhejo (${L.cooldown}s)` : 'OTP dobara bhejo'}</button>`;
   }
 
-  return `<h2 style="font-size:22px;margin-top:24px">Number verify ho gaya</h2>
+  return `<div class="login-top-bar">
+    ${circularBackBtn('login', 'Wapas')}
+  </div>
+  <h2 style="font-size:22px;margin-top:4px">Number verify ho gaya</h2>
   <div class="mut" style="margin-bottom:14px">Bas ek step baaki hai profile poori karne ke liye.</div>
   <label for="nm" style="font-weight:700;font-size:14px">Aapka naam</label>
-  <input id="nm" placeholder="Poora naam" style="margin-top:6px">
+  <input id="nm" placeholder="Poora naam" style="margin-top:6px" onkeydown="if(event.key==='Enter') $('btn-signup-cust').click()">
   <label for="sk" style="font-weight:700;font-size:14px">Worker ho to apna kaam chuno</label>
   <select id="sk" style="margin-top:6px">${CATS.map((c) => `<option>${c}</option>`).join('')}</select>
-  <button class="btn acc" onclick="fin2('customer')">Customer ban kar shuru karo</button>
-  <button class="btn ghost" style="margin-top:10px" onclick="fin2('worker')">Worker ban kar kaam lo</button>
+  <button id="btn-signup-cust" class="btn acc" onclick="fin2('customer')">Customer ban kar shuru karo</button>
+  <button id="btn-signup-wrk" class="btn ghost" style="margin-top:10px" onclick="fin2('worker')">Worker ban kar kaam lo</button>
   <div class="mut" style="margin-top:10px">Worker ki ID aur verification ke baad hi requests milengi.</div>`;
 }
 
@@ -354,14 +447,28 @@ function sendOtp(re) {
       return;
     }
   }
+  const btn = $('btn-send-otp') || (re ? $('resend-btn') : null);
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.prevText = btn.innerHTML;
+    btn.innerHTML = '⏳ OTP bhej rahe hain...';
+  }
   act(async () => {
-    const d = await api('POST', '/auth/otp/send', { phone: ph });
-    L.ph = ph;
-    L.dev = d.devOtp || '';
-    L.step = 1;
-    render();
-    startOtpCooldown();
-    if (re) toast(d.message || 'Naya OTP bhej diya');
+    try {
+      const d = await api('POST', '/auth/otp/send', { phone: ph });
+      L.ph = ph;
+      L.dev = d.devOtp || '';
+      L.step = 1;
+      render();
+      startOtpCooldown();
+      if (re) toast(d.message || 'Naya OTP bhej diya');
+    } catch (err) {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = btn.dataset.prevText || 'OTP Bhejo';
+      }
+      throw err;
+    }
   });
 }
 
@@ -372,10 +479,20 @@ function verOtp() {
     toast('6 digit ka OTP daalein');
     return;
   }
+  const btn = $('btn-ver-otp');
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.prevText = btn.innerHTML;
+    btn.innerHTML = '⏳ Verify ho raha hai...';
+  }
   act(async () => {
     try {
       await signedIn(await api('POST', '/auth/otp/verify', { phone: L.ph, otp: v }));
     } catch (e) {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = btn.dataset.prevText || 'Verify Karein';
+      }
       if (e.data && e.data.needsProfile) {
         L.step = 2;
         render();
@@ -392,14 +509,36 @@ function fin2(role) {
     toast('Apna naam likho');
     return;
   }
-  act(async () => signedIn(await api('POST', '/auth/otp/verify', { phone: S.lg.ph, otp: S.lg.v, name: n, role, skill: role === 'worker' ? $('sk').value : undefined })));
+  const btn = role === 'customer' ? $('btn-signup-cust') : $('btn-signup-wrk');
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.prevText = btn.innerHTML;
+    btn.innerHTML = '⏳ Setup ho raha hai...';
+  }
+  act(async () => {
+    try {
+      signedIn(await api('POST', '/auth/otp/verify', { phone: S.lg.ph, otp: S.lg.v, name: n, role, skill: role === 'worker' ? $('sk').value : undefined }));
+    } catch (err) {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = btn.dataset.prevText || (role === 'customer' ? 'Customer ban kar shuru karo' : 'Worker ban kar kaam lo');
+      }
+      throw err;
+    }
+  });
 }
 
 async function signedIn(d) {
   S.token = d.token;
   S.user = d.user;
   try { localStorage.setItem('fm_auth', JSON.stringify({ t: d.token, u: d.user })); } catch (e) {}
-  S.scr = d.user.role === 'worker' ? 'wk' : (d.user.role === 'admin' ? 'adm' : 'home');
+  // Multi-Role Redirection: Customer, Provider (Worker), Admin, Operations
+  S.scr = d.user.role === 'worker' ? 'wk' : (d.user.role === 'admin' ? 'adm' : (d.user.role === 'operations' ? 'ops' : 'home'));
+  await refresh();
+  render();
+  scrollTo(0, 0);
+  toast('Welcome, ' + d.user.name);
+}
   await refresh();
   render();
   scrollTo(0, 0);
@@ -661,7 +800,7 @@ function book() {
   const estimatedTotal = Math.max(0, x.p + emergencyFee - discount);
   const avail = S.emergencyAvail;
 
-  return `<button class="back" onclick="go('home')">← Wapas Home Pe</button>
+  return `<div style="margin:10px 0 14px">${circularBackBtn('home', 'Wapas Services')}</div>
 
   <div class="card row" style="justify-content:flex-start;margin-top:10px">
     <div class="im sm" style="width:70px;height:70px;flex-shrink:0">${art(S.sv)}</div>
@@ -1040,7 +1179,7 @@ function mo() {
    ======================================================== */
 function pf() {
   const u = S.user || { name: 'Customer', phone: '9876543210', id: 1 };
-  return `<button class="back" onclick="go('home')">← Wapas Home</button>
+  return `<div style="margin:10px 0 14px">${circularBackBtn('home', 'Wapas Home')}</div>
   <h2 style="font-size:22px">Aapka Profile</h2>
 
   <div class="card row" style="justify-content:flex-start">
