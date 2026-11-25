@@ -344,7 +344,7 @@ function createApp(db = openDb()) {
 
     let user = await db.queryOne('SELECT * FROM users WHERE phone = $1', [row.phone]), isNew = false;
     if (!user) {
-      if (String(name || '').trim().length < 2 || !['customer', 'worker', 'admin'].includes(role)) {
+      if (String(name || '').trim().length < 2 || !['customer', 'worker', 'admin', 'operations'].includes(role)) {
         if (row.hash === 'MSG91_PENDING') {
           await db.query('UPDATE otps SET hash = $1 WHERE phone = $2', ['MSG91_VERIFIED_PENDING_PROFILE', row.phone]);
         }
@@ -1804,7 +1804,7 @@ function createApp(db = openDb()) {
     const params = [];
     let idx = 1;
 
-    if (role && ['customer', 'worker', 'admin'].includes(role)) {
+    if (role && ['customer', 'worker', 'admin', 'operations'].includes(role)) {
       conditions.push(`role = $${idx++}`);
       params.push(role);
     }
@@ -1843,7 +1843,7 @@ function createApp(db = openDb()) {
     });
   }));
 
-  app.get('/api/admin/bookings', auth('admin'), h(async (req, res) => {
+  app.get('/api/admin/bookings', auth('admin', 'operations'), h(async (req, res) => {
     const { status, limit } = req.query;
     const maxLimit = Math.min(Number(limit) || 100, 200);
     const querySql = `
@@ -1866,7 +1866,7 @@ function createApp(db = openDb()) {
     ok(res, { bookings: sanitized });
   }));
 
-  app.post('/api/admin/bookings/:id/assign', auth('admin'), h(async (req, res) => {
+  app.post('/api/admin/bookings/:id/assign', auth('admin', 'operations'), h(async (req, res) => {
     const bId = Number(req.params.id);
     const workerId = Number(req.body.worker_id);
     if (!workerId) bad(400, 'Technician select karein');
@@ -1988,7 +1988,7 @@ function createApp(db = openDb()) {
     ok(res, { message: 'Coupon deactivate kar diya gaya' });
   }));
 
-  app.get('/api/admin/complaints', auth('admin'), h(async (req, res) => {
+  app.get('/api/admin/complaints', auth('admin', 'operations'), h(async (req, res) => {
     const { status } = req.query;
     const result = await db.query(
       `SELECT c.*, u.name AS customer_name, u.phone AS customer_phone,
@@ -2004,7 +2004,7 @@ function createApp(db = openDb()) {
     ok(res, { complaints: result.rows });
   }));
 
-  app.post('/api/admin/complaints/:id/resolve', auth('admin'), h(async (req, res) => {
+  app.post('/api/admin/complaints/:id/resolve', auth('admin', 'operations'), h(async (req, res) => {
     const cId = Number(req.params.id);
     const { status, resolution_notes, refund_amount } = req.body || {};
     const complaint = await db.queryOne('SELECT * FROM complaints WHERE id = $1', [cId]);
@@ -2034,6 +2034,85 @@ function createApp(db = openDb()) {
         ? `Complaint resolve ho gayi aur customer ke wallet mein ₹${refund} refund credit ho gaya`
         : `Complaint status update ho gaya: ${nextStatus}`
     });
+  }));
+
+  // ---------- Operations Support Staff Endpoints ----------
+  app.get('/api/operations/overview', auth('admin', 'operations'), h(async (req, res) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const [bookingsTotal, pendingReq, inProg, completedToday, openComplaints, onlineWorkers] = await Promise.all([
+      db.queryOne("SELECT count(*)::int AS count FROM bookings"),
+      db.queryOne("SELECT count(*)::int AS count FROM bookings WHERE status = 'requested'"),
+      db.queryOne("SELECT count(*)::int AS count FROM bookings WHERE status IN ('assigned', 'on_the_way', 'inspecting', 'quoted', 'in_progress')"),
+      db.queryOne("SELECT count(*)::int AS count FROM bookings WHERE status = 'completed' AND substring(created_at::text, 1, 10) = $1", [today]),
+      db.queryOne("SELECT count(*)::int AS count FROM complaints WHERE status = 'open'"),
+      db.queryOne("SELECT count(*)::int AS count FROM users WHERE role = 'worker' AND online = 1")
+    ]);
+
+    ok(res, {
+      stats: {
+        total_bookings: bookingsTotal ? bookingsTotal.count : 0,
+        pending_requests: pendingReq ? pendingReq.count : 0,
+        in_progress_jobs: inProg ? inProg.count : 0,
+        completed_today: completedToday ? completedToday.count : 0,
+        open_complaints: openComplaints ? openComplaints.count : 0,
+        online_providers: onlineWorkers ? onlineWorkers.count : 0
+      }
+    });
+  }));
+
+  app.get('/api/operations/providers', auth('admin', 'operations'), h(async (req, res) => {
+    const { skill, online } = req.query;
+    const conds = ["role = 'worker'"];
+    const params = [];
+    if (skill) {
+      params.push(skill);
+      conds.push(`skill = $${params.length}`);
+    }
+    if (online !== undefined && online !== '') {
+      params.push(Number(online) ? 1 : 0);
+      conds.push(`online = $${params.length}`);
+    }
+    const workers = await db.query(
+      `SELECT id, name, phone, skill, online, id_verified, experience_years, service_areas
+       FROM users
+       WHERE ${conds.join(' AND ')}
+       ORDER BY online DESC, id ASC`,
+      params
+    );
+    ok(res, { providers: workers.rows });
+  }));
+
+  app.post('/api/operations/bookings/:id/cancel', auth('admin', 'operations'), h(async (req, res) => {
+    const bId = Number(req.params.id);
+    const reason = req.body && req.body.reason ? String(req.body.reason).trim().slice(0, 500) : 'Operations Support Cancellation';
+    const b = await db.queryOne('SELECT * FROM bookings WHERE id = $1', [bId]);
+    if (!b) bad(404, 'Booking nahi mili');
+    if (['completed', 'closed', 'cancelled'].includes(b.status)) {
+      bad(400, `Booking status ${b.status} hai, isse cancel nahi kiya ja sakta`);
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.query("UPDATE bookings SET status = 'cancelled' WHERE id = $1", [b.id]);
+      await tx.query(
+        'INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by_user_id, notes) VALUES ($1, $2, $3, $4, $5)',
+        [b.id, b.status, 'cancelled', req.user.id, `Operations cancellation: ${reason}`]
+      );
+      if (b.paid && b.total > 0) {
+        await credit(b.customer_id, `FixMate Cancellation Refund (Booking #${b.id})`, b.total, tx);
+      }
+    });
+
+    await notifyUser({
+      userId: b.customer_id,
+      bookingId: b.id,
+      title: `Booking Cancelled (#${b.id})`,
+      body: `Aapki booking support team dwara cancel kar di gayi hai: ${reason}`,
+      type: 'booking_status',
+      dedupeKey: `booking_${b.id}_ops_cancelled`
+    });
+
+    const updated = await load(b.id);
+    ok(res, { booking: view(updated, req.user), message: 'Booking cancel kar di gayi' });
   }));
 
   // ---------- Phase 8: Emergency Availability, AMC Plans, Family Accounts, Reminders & Service Areas ----------

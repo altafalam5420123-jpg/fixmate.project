@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   phone VARCHAR(20) NOT NULL UNIQUE,
   name VARCHAR(100) NOT NULL,
-  role VARCHAR(20) NOT NULL CHECK (role IN ('customer', 'worker', 'admin')),
+  role VARCHAR(20) NOT NULL CHECK (role IN ('customer', 'worker', 'admin', 'operations')),
   skill VARCHAR(50),
   wallet INTEGER NOT NULL DEFAULT 0 CHECK (wallet >= 0),
   online SMALLINT NOT NULL DEFAULT 1 CHECK (online IN (0, 1)),
@@ -353,7 +353,7 @@ function openMemoryDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       phone TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('customer', 'worker', 'admin')),
+      role TEXT NOT NULL CHECK (role IN ('customer', 'worker', 'admin', 'operations')),
       skill TEXT,
       wallet INTEGER NOT NULL DEFAULT 0 CHECK (wallet >= 0),
       online INTEGER NOT NULL DEFAULT 1 CHECK (online IN (0, 1)),
@@ -741,6 +741,20 @@ function openDb(config = {}) {
         await this.query(SCHEMA_SQL);
 
         // Additive non-breaking Phase 2 booking columns
+        try {
+          await this.query(`
+            DO $$
+            BEGIN
+              IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_role_check') THEN
+                ALTER TABLE users DROP CONSTRAINT users_role_check;
+              END IF;
+              ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('customer', 'worker', 'admin', 'operations'));
+            EXCEPTION WHEN OTHERS THEN
+              NULL;
+            END $$;
+          `);
+        } catch (roleErr) {}
+
         try {
           await this.query(`
             ALTER TABLE bookings ADD COLUMN IF NOT EXISTS issue_desc TEXT;
