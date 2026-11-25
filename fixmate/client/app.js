@@ -375,6 +375,17 @@ function login() {
       <div style="text-align:center;margin-top:16px">
         <button class="btn sm ghost" style="display:inline-flex;width:auto;padding:6px 14px;font-size:12px;opacity:0.85" onclick="setCustomServerUrl()">⚙️ Server: ${esc(getServerStatusLabel())}</button>
       </div>
+
+      <!-- Quick 1-Click Role & Dashboard Switcher (Demo / Testing) -->
+      <div class="card" style="margin-top:18px;background:var(--soft);border:none;padding:12px 14px;text-align:center">
+        <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:8px">⚡ Quick 1-Tap Dashboard Switcher:</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <button type="button" class="btn sm ghost" style="font-size:12px;padding:8px 6px;background:var(--card);font-weight:700" onclick="quickSwitchRole('admin')">👑 Admin Panel</button>
+          <button type="button" class="btn sm ghost" style="font-size:12px;padding:8px 6px;background:var(--card);font-weight:700" onclick="quickSwitchRole('worker')">🛠️ Provider App</button>
+          <button type="button" class="btn sm ghost" style="font-size:12px;padding:8px 6px;background:var(--card);font-weight:700" onclick="quickSwitchRole('operations')">🎧 Operations Desk</button>
+          <button type="button" class="btn sm ghost" style="font-size:12px;padding:8px 6px;background:var(--card);font-weight:700" onclick="quickSwitchRole('customer')">👤 Customer App</button>
+        </div>
+      </div>
     </div>`;
   }
 
@@ -1256,7 +1267,40 @@ function pf() {
     <button class="btn sm" style="width:auto;padding:8px 14px" onclick="copyCoupon('FIX${String(u.id || 1).padStart(4, '0')}')">Share</button>
   </div>
 
+  <!-- Quick Role Switcher for Admin / Testing -->
+  <div class="card" style="margin-top:14px;border-color:var(--teal)">
+    <b style="font-size:14px;color:var(--teal)">🔄 Switch Dashboard Role (Testing)</b>
+    <div class="mut" style="font-size:12px;margin:4px 0 10px">Testing ke liye kisi bhi role ka dashboard open karein:</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button class="btn sm ghost" onclick="quickSwitchRole('admin')">👑 Admin Panel</button>
+      <button class="btn sm ghost" onclick="quickSwitchRole('worker')">🛠️ Provider App</button>
+      <button class="btn sm ghost" onclick="quickSwitchRole('operations')">🎧 Operations Desk</button>
+      <button class="btn sm ghost" onclick="quickSwitchRole('customer')">👤 Customer App</button>
+    </div>
+  </div>
+
   <button class="btn acc" style="margin-top:20px" onclick="out()">Logout & Switch Account</button>`;
+}
+
+function quickSwitchRole(role) {
+  if (role === 'admin') {
+    S.user = { id: 1, name: 'FixMate Master Admin', phone: '9999999999', role: 'admin', wallet: 10000 };
+    S.scr = 'adm';
+  } else if (role === 'worker') {
+    S.user = { id: 2, name: 'Suresh Kumar (Electrician)', phone: '9876543210', role: 'worker', skill: 'Electrician', online: 1, id_verified: 1, wallet: 1450 };
+    S.scr = 'wk';
+  } else if (role === 'operations') {
+    S.user = { id: 3, name: 'Rohan Sharma (Support)', phone: '9123456780', role: 'operations', wallet: 0 };
+    S.scr = 'ops';
+  } else {
+    S.user = { id: 4, name: 'Altaf Alam', phone: '8603519486', role: 'customer', wallet: 500 };
+    S.scr = 'home';
+  }
+  render();
+  scrollTo(0, 0);
+  toast(`Switched to ${role.toUpperCase()} Dashboard!`);
+  if (role === 'admin') loadAdmData('overview');
+  else if (role === 'operations') loadOpsData('overview');
 }
 
 /* ========================================================
