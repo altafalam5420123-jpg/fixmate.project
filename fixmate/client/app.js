@@ -2405,6 +2405,7 @@ function submitComplaint() {
 function setAdmTab(tab) {
   S.admTab = tab;
   render();
+  loadAdmData(tab);
 }
 
 function openAdminAssignModal(bookingId) {
@@ -2986,17 +2987,33 @@ function adm() {
 
     <div class="adm-subnav">
       <button class="chip ${cur === 'overview' ? 'on' : ''}" onclick="setAdmTab('overview')">📊 Overview</button>
+      <button class="chip ${cur === 'customers' ? 'on' : ''}" onclick="setAdmTab('customers')">👥 Customers</button>
+      <button class="chip ${cur === 'techs' ? 'on' : ''}" onclick="setAdmTab('techs')">🛠️ Providers</button>
+      <button class="chip ${cur === 'verification' ? 'on' : ''}" onclick="setAdmTab('verification')">🪪 Verification</button>
       <button class="chip ${cur === 'bookings' ? 'on' : ''}" onclick="setAdmTab('bookings')">📋 Bookings</button>
-      <button class="chip ${cur === 'techs' ? 'on' : ''}" onclick="setAdmTab('techs')">🛠️ Technicians</button>
-      <button class="chip ${cur === 'catalog' ? 'on' : ''}" onclick="setAdmTab('catalog')">🏷️ Catalog & Pricing</button>
-      <button class="chip ${cur === 'complaints' ? 'on' : ''}" onclick="setAdmTab('complaints')">🎫 Support Tickets</button>
+      <button class="chip ${cur === 'catalog' ? 'on' : ''}" onclick="setAdmTab('catalog')">📂 Categories</button>
+      <button class="chip ${cur === 'payments' ? 'on' : ''}" onclick="setAdmTab('payments')">💳 Payments</button>
+      <button class="chip ${cur === 'commission' ? 'on' : ''}" onclick="setAdmTab('commission')">💰 Commission</button>
+      <button class="chip ${cur === 'reviews' ? 'on' : ''}" onclick="setAdmTab('reviews')">⭐ Reviews</button>
+      <button class="chip ${cur === 'complaints' ? 'on' : ''}" onclick="setAdmTab('complaints')">🎫 Complaints</button>
+      <button class="chip ${cur === 'notifications' ? 'on' : ''}" onclick="setAdmTab('notifications')">🔔 Notifications</button>
+      <button class="chip ${cur === 'reports' ? 'on' : ''}" onclick="setAdmTab('reports')">📈 Reports</button>
+      <button class="chip ${cur === 'settings' ? 'on' : ''}" onclick="setAdmTab('settings')">⚙️ Settings</button>
     </div>
 
     ${cur === 'overview' ? admOverview() : ''}
-    ${cur === 'bookings' ? admBookings() : ''}
+    ${cur === 'customers' ? admCustomers() : ''}
     ${cur === 'techs' ? admTechs() : ''}
+    ${cur === 'verification' ? admVerification() : ''}
+    ${cur === 'bookings' ? admBookings() : ''}
     ${cur === 'catalog' ? admCatalog() : ''}
+    ${cur === 'payments' ? admPayments() : ''}
+    ${cur === 'commission' ? admCommission() : ''}
+    ${cur === 'reviews' ? admReviews() : ''}
     ${cur === 'complaints' ? admComplaints() : ''}
+    ${cur === 'notifications' ? admNotifications() : ''}
+    ${cur === 'reports' ? admReports() : ''}
+    ${cur === 'settings' ? admSettings() : ''}
   `;
 }
 
@@ -3256,6 +3273,475 @@ function admComplaints() {
       </div>
     `).join('') : '<div class="card mut" style="text-align:center;padding:24px">No support tickets in this view.</div>'}
   `;
+}
+
+function admCustomers() {
+  const list = S.admCustomers || [];
+  const q = (S.admCustQuery || '').toLowerCase();
+  const filtered = q ? list.filter((c) => (c.name || '').toLowerCase().includes(q) || (c.phone || '').includes(q)) : list;
+
+  return `
+    <div class="row" style="margin-bottom:12px;gap:8px">
+      <input type="text" class="input" style="flex:1" placeholder="🔍 Search customers by name or phone..." value="${esc(S.admCustQuery || '')}" oninput="S.admCustQuery=this.value;render()">
+      <button class="btn sm ghost" style="width:auto;padding:8px 12px" onclick="S.admCustomers=null;loadAdmData('customers');toast('Refreshing...')">🔄</button>
+    </div>
+    <div class="mut" style="font-size:12px;margin-bottom:8px">Total registered customers: <b>${list.length}</b></div>
+    ${filtered.length ? filtered.map((c) => `
+      <div class="adm-item-card">
+        <div class="row">
+          <div>
+            <b>👤 ${esc(c.name)}</b>
+            <div class="mut" style="font-size:12px">📞 ${esc(c.phone)}</div>
+          </div>
+          <div style="text-align:right">
+            <span class="badge" style="background:var(--soft);color:var(--teal);font-weight:700">Wallet: ${inr(c.wallet || 0)}</span>
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--bd);font-size:12px">
+          <div>Total Bookings: <b>${c.bookings_count || 0}</b></div>
+          <div>Total Spend: <b>${inr(c.total_spent || 0)}</b></div>
+          <a href="tel:${esc(c.phone)}" class="btn sm ghost" style="text-decoration:none;width:auto;padding:4px 8px;font-size:11px">
+            ${ic('phone', 12)} Call
+          </a>
+        </div>
+      </div>
+    `).join('') : '<div class="card mut" style="text-align:center;padding:24px">No customers found. Click 🔄 to refresh.</div>'}
+  `;
+}
+
+function admVerification() {
+  const allWorkers = S.admWorkers || [];
+  const pending = allWorkers.filter((w) => !w.id_verified);
+
+  return `
+    <div class="row" style="margin-bottom:12px">
+      <div>
+        <h3 style="margin:0;font-size:17px">🪪 Technician ID Verification Queue</h3>
+        <div class="mut" style="font-size:12px">Only admin-approved technicians can accept live customer booking requests.</div>
+      </div>
+      <span class="adm-badge ${pending.length ? 'open' : 'resolved'}">${pending.length} Pending Approvals</span>
+    </div>
+
+    ${pending.length ? pending.map((w) => `
+      <div class="adm-item-card" style="border-left:4px solid var(--orange)">
+        <div class="row">
+          <div class="row" style="justify-content:flex-start;gap:10px">
+            <span class="av" style="background:var(--soft);color:var(--orange);border-radius:12px">${ic('shield', 20)}</span>
+            <div>
+              <b>${esc(w.name)}</b>
+              <div class="mut" style="font-size:12px">${esc(w.skill || 'Technician')} · ${w.experience_years != null ? w.experience_years + ' yrs exp' : 'Experienced'}</div>
+            </div>
+          </div>
+          <span class="adm-badge unverified">⚠️ Needs Approval</span>
+        </div>
+        <div class="mut" style="font-size:12px;margin:8px 0">
+          Phone: <b>${esc(w.phone)}</b> · Location/Areas: ${esc(w.service_areas || 'Dhanbad')}<br>
+          Govt ID Document: <b>Aadhaar / Driving License (Self-Attested)</b>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn sm acc" onclick="toggleTechVerification(${w.id}, 1)">
+            ✅ Verify & Approve Provider
+          </button>
+          <a href="tel:${esc(w.phone)}" class="btn sm ghost" style="text-decoration:none;width:auto;padding:8px 12px">
+            ${ic('phone', 14)} Call to Verify
+          </a>
+        </div>
+      </div>
+    `).join('') : `
+      <div class="card" style="text-align:center;padding:32px;background:var(--card)">
+        <div style="font-size:36px;margin-bottom:8px">🎉</div>
+        <b>Verification Queue Clean!</b>
+        <div class="mut" style="font-size:13px;margin-top:4px">All registered service providers have been verified and approved.</div>
+      </div>
+    `}
+  `;
+}
+
+function admPayments() {
+  const payments = S.admPayments || [];
+  return `
+    <div class="row" style="margin-bottom:12px">
+      <div>
+        <h3 style="margin:0;font-size:17px">💳 Payment & Transaction Ledger</h3>
+        <div class="mut" style="font-size:12px">Real-time payment order tracking, Razorpay gateways and cash logs</div>
+      </div>
+      <button class="btn sm ghost" style="width:auto;padding:6px 12px" onclick="S.admPayments=null;loadAdmData('payments');toast('Refreshing payments...')">🔄 Refresh</button>
+    </div>
+    ${payments.length ? payments.map((p) => `
+      <div class="adm-item-card">
+        <div class="row">
+          <div>
+            <b>Order #${p.id} · Booking #${p.booking_id || 'N/A'}</b>
+            <div class="mut" style="font-size:11px">PG Order: ${esc(p.provider_order_id || 'Direct / Cash')}</div>
+          </div>
+          <span class="adm-badge ${p.status === 'paid' ? 'resolved' : p.status === 'failed' ? 'unverified' : 'open'}">
+            ${(p.status || 'created').toUpperCase()}
+          </span>
+        </div>
+        <div class="row" style="margin-top:8px;font-size:12px">
+          <div class="mut">
+            Customer: <b>${esc(p.customer_name || 'Customer')}</b> (${esc(p.customer_phone || '')})<br>
+            Service: <b>${esc(p.service_name || 'Service')}</b> · Provider: ${esc(p.worker_name || 'Unassigned')}
+          </div>
+          <div style="text-align:right">
+            <b style="font-size:16px;color:var(--teal)">${inr(Math.round((p.amount_paise || 0) / 100))}</b>
+          </div>
+        </div>
+      </div>
+    `).join('') : '<div class="card mut" style="text-align:center;padding:24px">No payment records logged yet. Click 🔄 Refresh.</div>'}
+  `;
+}
+
+function admCommission() {
+  const data = S.admCommissionData || {
+    commission_percentage: 15,
+    total_gmv: 0,
+    total_commission_earned: 0,
+    provider_net_payout: 0
+  };
+
+  return `
+    <div class="row" style="margin-bottom:14px">
+      <div>
+        <h3 style="margin:0;font-size:17px">💰 Commission Management</h3>
+        <div class="mut" style="font-size:12px">Configure FixMate platform fee on completed service bookings</div>
+      </div>
+    </div>
+
+    <div class="adm-kpi-grid">
+      <div class="adm-kpi-card highlight">
+        <span class="mut" style="font-size:11px;font-weight:700">CURRENT COMMISSION RATE</span>
+        <div class="adm-kpi-val" style="color:var(--teal)">${data.commission_percentage}%</div>
+        <div class="adm-kpi-sub">Applied automatically to every job</div>
+      </div>
+      <div class="adm-kpi-card orange">
+        <span class="mut" style="font-size:11px;font-weight:700">PLATFORM EARNINGS</span>
+        <div class="adm-kpi-val" style="color:var(--orange)">${inr(data.total_commission_earned || 0)}</div>
+        <div class="adm-kpi-sub">From ${inr(data.total_gmv || 0)} total GMV</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <h4 style="margin:0 0 8px;font-size:15px">Update Commission Percentage</h4>
+      <div class="mut" style="font-size:12px;margin-bottom:12px">Enter the percentage cut deducted by the platform (standard industry rate is 10% - 20%):</div>
+      <div class="row" style="gap:10px">
+        <input type="number" id="adm-comm-input" class="input" style="flex:1" min="0" max="50" value="${data.commission_percentage}" placeholder="e.g. 15">
+        <button class="btn acc" style="width:auto;padding:8px 18px" onclick="saveCommissionRate()">Save Rate</button>
+      </div>
+    </div>
+  `;
+}
+
+function saveCommissionRate() {
+  const val = Number($('adm-comm-input')?.value);
+  if (isNaN(val) || val < 0 || val > 50) {
+    toast('Commission 0% se 50% ke beech honi chahiye');
+    return;
+  }
+  act(async () => {
+    const res = await api('POST', '/admin/commission', { percentage: val });
+    S.admCommissionData = null;
+    await loadAdmData('commission');
+    toast(res.message || 'Commission rate updated!');
+  });
+}
+
+function admReviews() {
+  const reviews = S.admReviews || [];
+  const filter = S.admReviewFilter || 0;
+  const filtered = filter ? reviews.filter((r) => r.stars === filter) : reviews;
+
+  return `
+    <div class="row" style="margin-bottom:12px">
+      <div>
+        <h3 style="margin:0;font-size:17px">⭐ Ratings & Customer Reviews</h3>
+        <div class="mut" style="font-size:12px">Feedback left by customers after service completion</div>
+      </div>
+      <button class="btn sm ghost" style="width:auto;padding:6px 12px" onclick="S.admReviews=null;loadAdmData('reviews');toast('Refreshing reviews...')">🔄</button>
+    </div>
+
+    <div class="chips" style="margin-bottom:12px">
+      <button class="chip ${filter === 0 ? 'on' : ''}" onclick="S.admReviewFilter=0;render()">All (${reviews.length})</button>
+      <button class="chip ${filter === 5 ? 'on' : ''}" onclick="S.admReviewFilter=5;render()">5 ⭐ (${reviews.filter((r) => r.stars === 5).length})</button>
+      <button class="chip ${filter === 4 ? 'on' : ''}" onclick="S.admReviewFilter=4;render()">4 ⭐</button>
+      <button class="chip ${filter === 3 ? 'on' : ''}" onclick="S.admReviewFilter=3;render()">3 ⭐</button>
+      <button class="chip ${filter <= 2 && filter > 0 ? 'on' : ''}" onclick="S.admReviewFilter=2;render()">≤2 ⭐ Critical</button>
+    </div>
+
+    ${filtered.length ? filtered.map((r) => `
+      <div class="adm-item-card">
+        <div class="row">
+          <div>
+            <b>${'⭐'.repeat(r.stars || 5)} (${r.stars}/5)</b>
+            <div class="mut" style="font-size:12px">Service: <b>${esc(r.service_name || 'Home Service')}</b> (${esc(r.service_category || '')})</div>
+          </div>
+          <span class="mut" style="font-size:11px">Booking #${r.booking_id}</span>
+        </div>
+        <div style="margin:8px 0;font-size:13px;color:var(--ink)">
+          "${esc(r.feedback || 'Great and timely service!')}"
+        </div>
+        <div class="row" style="font-size:11px;padding-top:6px;border-top:1px solid var(--bd)">
+          <span class="mut">Customer: <b>${esc(r.customer_name || 'Customer')}</b></span>
+          <span class="mut">Technician: <b>${esc(r.worker_name || 'Provider')}</b></span>
+        </div>
+      </div>
+    `).join('') : '<div class="card mut" style="text-align:center;padding:24px">No reviews in this filter. Click 🔄 to fetch.</div>'}
+  `;
+}
+
+function admNotifications() {
+  const notifs = S.admNotifs || [];
+  return `
+    <div class="row" style="margin-bottom:12px">
+      <div>
+        <h3 style="margin:0;font-size:17px">🔔 Platform Broadcast & Push Notifications</h3>
+        <div class="mut" style="font-size:12px">Send real-time alerts, festival offers, and maintenance notices</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <h4 style="margin:0 0 10px;font-size:15px">🚀 Send New Broadcast Announcement</h4>
+      <div style="margin-bottom:8px">
+        <label class="mut" style="font-size:12px">Target Audience:</label>
+        <select id="adm-notif-role" class="input" style="margin-top:4px">
+          <option value="all">📢 All Users (Customers & Technicians)</option>
+          <option value="customer">👤 Customers Only</option>
+          <option value="worker">🛠️ Service Providers Only</option>
+        </select>
+      </div>
+      <div style="margin-bottom:8px">
+        <label class="mut" style="font-size:12px">Announcement Title:</label>
+        <input type="text" id="adm-notif-title" class="input" placeholder="e.g. Festival Offer 20% Cashback / Service Notice">
+      </div>
+      <div style="margin-bottom:12px">
+        <label class="mut" style="font-size:12px">Notification Message:</label>
+        <textarea id="adm-notif-body" class="input" rows="3" placeholder="FixMate par aaj hi book karein aur payein cash discounts..."></textarea>
+      </div>
+      <button class="btn acc" style="width:100%" onclick="submitBroadcastNotif()">Send Broadcast to App</button>
+    </div>
+
+    <h4 style="margin:16px 0 8px;font-size:15px">Recent Notifications (${notifs.length})</h4>
+    ${notifs.length ? notifs.slice(0, 15).map((n) => `
+      <div class="adm-item-card" style="padding:10px 14px">
+        <div class="row">
+          <b>${esc(n.title)}</b>
+          <span class="badge" style="font-size:10px">${esc(n.user_role || 'user')}</span>
+        </div>
+        <div class="mut" style="font-size:12px;margin-top:4px">${esc(n.body)}</div>
+        <div class="mut" style="font-size:10px;margin-top:4px">To: ${esc(n.user_name || 'User')} (${esc(n.user_phone || '')})</div>
+      </div>
+    `).join('') : '<div class="card mut">No notifications sent yet.</div>'}
+  `;
+}
+
+function submitBroadcastNotif() {
+  const role = $('adm-notif-role')?.value || 'all';
+  const title = $('adm-notif-title')?.value?.trim();
+  const body = $('adm-notif-body')?.value?.trim();
+  if (!title || !body) {
+    toast('Title aur message dono daalein');
+    return;
+  }
+  act(async () => {
+    const res = await api('POST', '/admin/notifications/broadcast', { target_role: role, title, body });
+    if ($('adm-notif-title')) $('adm-notif-title').value = '';
+    if ($('adm-notif-body')) $('adm-notif-body').value = '';
+    S.admNotifs = null;
+    await loadAdmData('notifications');
+    toast(res.message || 'Notification broadcast sent! 🚀');
+  });
+}
+
+function admReports() {
+  const data = S.admReports || { booking_breakdown: [], category_performance: [] };
+  const breakdown = data.booking_breakdown || [];
+  const catPerf = data.category_performance || [];
+
+  return `
+    <div class="row" style="margin-bottom:14px">
+      <div>
+        <h3 style="margin:0;font-size:17px">📈 Reports & Business Analytics</h3>
+        <div class="mut" style="font-size:12px">Export booking records and view service performance</div>
+      </div>
+      <button class="btn sm acc" style="width:auto;padding:8px 14px" onclick="exportBookingsCsv()">
+        📥 Export Bookings CSV
+      </button>
+    </div>
+
+    <div class="adm-table-card" style="margin-bottom:14px">
+      <b style="font-size:15px;display:block;margin-bottom:8px">Bookings by Status Breakdown</b>
+      <table style="width:100%;font-size:13px;border-collapse:collapse">
+        <tr style="border-bottom:1px solid var(--bd);text-align:left;color:var(--mut)">
+          <th style="padding:6px 0">Status</th>
+          <th style="padding:6px 0">Count</th>
+          <th style="padding:6px 0;text-align:right">Total GMV</th>
+        </tr>
+        ${breakdown.length ? breakdown.map((b) => `
+          <tr style="border-bottom:1px solid var(--bd)">
+            <td style="padding:8px 0"><b>${b.status}</b></td>
+            <td style="padding:8px 0">${b.total_count}</td>
+            <td style="padding:8px 0;text-align:right;font-weight:700;color:var(--teal)">${inr(b.total_value)}</td>
+          </tr>
+        `).join('') : '<tr><td colspan="3" class="mut" style="padding:8px 0">Click tab to load report data</td></tr>'}
+      </table>
+    </div>
+
+    <div class="adm-table-card">
+      <b style="font-size:15px;display:block;margin-bottom:8px">Category Revenue Performance</b>
+      <table style="width:100%;font-size:13px;border-collapse:collapse">
+        <tr style="border-bottom:1px solid var(--bd);text-align:left;color:var(--mut)">
+          <th style="padding:6px 0">Category</th>
+          <th style="padding:6px 0">Orders</th>
+          <th style="padding:6px 0;text-align:right">Revenue</th>
+        </tr>
+        ${catPerf.length ? catPerf.map((c) => `
+          <tr style="border-bottom:1px solid var(--bd)">
+            <td style="padding:8px 0"><b>${esc(c.cat)}</b></td>
+            <td style="padding:8px 0">${c.bookings_count}</td>
+            <td style="padding:8px 0;text-align:right;font-weight:700;color:var(--teal)">${inr(c.total_revenue)}</td>
+          </tr>
+        `).join('') : '<tr><td colspan="3" class="mut" style="padding:8px 0">No category data</td></tr>'}
+      </table>
+    </div>
+  `;
+}
+
+function exportBookingsCsv() {
+  const bookings = S.admBookings || [];
+  if (!bookings.length) {
+    toast('No bookings available to export');
+    return;
+  }
+  const headers = ['Booking ID', 'Service', 'Category', 'Customer Name', 'Customer Phone', 'Technician', 'Status', 'Slot', 'Address', 'Total (INR)', 'Payment Status'];
+  const rows = bookings.map((b) => [
+    b.id,
+    `"${(b.service_name || '').replace(/"/g, '""')}"`,
+    `"${(b.category || '').replace(/"/g, '""')}"`,
+    `"${(b.customer_name || '').replace(/"/g, '""')}"`,
+    `"${(b.customer_phone || '').replace(/"/g, '""')}"`,
+    `"${(b.worker_name || 'Unassigned').replace(/"/g, '""')}"`,
+    b.status,
+    `"${(b.slot || '').replace(/"/g, '""')}"`,
+    `"${(b.address || '').replace(/"/g, '""')}"`,
+    b.total || 0,
+    b.paid ? 'PAID' : 'UNPAID'
+  ]);
+  const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement('a');
+  link.setAttribute('href', encodedUri);
+  link.setAttribute('download', `fixmate_bookings_${new Date().toISOString().slice(0, 10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  toast('Bookings CSV exported successfully! 📥');
+}
+
+function admSettings() {
+  const set = S.admSettings || {
+    city: 'Dhanbad',
+    support_phone: '1800-FIX-MATE',
+    emergency_surge_fee: 99,
+    commission_pct: 15,
+    maintenance_mode: false,
+    auto_assign_enabled: true
+  };
+
+  return `
+    <div class="row" style="margin-bottom:14px">
+      <div>
+        <h3 style="margin:0;font-size:17px">⚙️ Platform & Operations Settings</h3>
+        <div class="mut" style="font-size:12px">Control operating parameters, customer support and dispatch rules</div>
+      </div>
+    </div>
+
+    <div class="card" style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label class="mut" style="font-size:12px">Operational City Name:</label>
+        <input type="text" id="adm-set-city" class="input" value="${esc(set.city || 'Dhanbad')}">
+      </div>
+      <div>
+        <label class="mut" style="font-size:12px">Customer Support Helpline Number:</label>
+        <input type="text" id="adm-set-phone" class="input" value="${esc(set.support_phone || '1800-FIX-MATE')}">
+      </div>
+      <div>
+        <label class="mut" style="font-size:12px">Emergency Booking Surge Charge (₹):</label>
+        <input type="number" id="adm-set-surge" class="input" value="${set.emergency_surge_fee || 99}">
+      </div>
+      <div class="row" style="padding:8px 0">
+        <div>
+          <b>Auto-assign nearest online technician</b>
+          <div class="mut" style="font-size:11px">Automatically dispatches available nearby workers on new bookings</div>
+        </div>
+        <input type="checkbox" id="adm-set-auto" ${set.auto_assign_enabled ? 'checked' : ''} style="width:20px;height:20px">
+      </div>
+      <div class="row" style="padding:8px 0">
+        <div>
+          <b>Maintenance Mode</b>
+          <div class="mut" style="font-size:11px">Temporarily pauses new customer checkout bookings for maintenance</div>
+        </div>
+        <input type="checkbox" id="adm-set-maint" ${set.maintenance_mode ? 'checked' : ''} style="width:20px;height:20px">
+      </div>
+      <button class="btn acc" style="margin-top:6px" onclick="savePlatformSettings()">💾 Save Platform Settings</button>
+    </div>
+  `;
+}
+
+function savePlatformSettings() {
+  const city = $('adm-set-city')?.value?.trim() || 'Dhanbad';
+  const support_phone = $('adm-set-phone')?.value?.trim() || '1800-FIX-MATE';
+  const emergency_surge_fee = Number($('adm-set-surge')?.value) || 99;
+  const auto_assign_enabled = $('adm-set-auto')?.checked ?? true;
+  const maintenance_mode = $('adm-set-maint')?.checked ?? false;
+
+  act(async () => {
+    const res = await api('POST', '/admin/settings', {
+      city,
+      support_phone,
+      emergency_surge_fee,
+      auto_assign_enabled,
+      maintenance_mode
+    });
+    S.admSettings = res.settings;
+    toast(res.message || 'Platform settings saved!');
+  });
+}
+
+async function loadAdmData(tab) {
+  if (!S.user || S.user.role !== 'admin') return;
+  try {
+    if (tab === 'customers' && !S.admCustomers) {
+      const res = await api('GET', '/admin/customers');
+      S.admCustomers = res.customers || [];
+      render();
+    } else if (tab === 'payments' && !S.admPayments) {
+      const res = await api('GET', '/admin/payments');
+      S.admPayments = res.payments || [];
+      render();
+    } else if (tab === 'commission' && !S.admCommissionData) {
+      const res = await api('GET', '/admin/commission');
+      S.admCommissionData = res;
+      render();
+    } else if (tab === 'reviews' && !S.admReviews) {
+      const res = await api('GET', '/admin/reviews');
+      S.admReviews = res.reviews || [];
+      render();
+    } else if (tab === 'notifications' && !S.admNotifs) {
+      const res = await api('GET', '/admin/notifications');
+      S.admNotifs = res.notifications || [];
+      render();
+    } else if (tab === 'reports' && !S.admReports) {
+      const res = await api('GET', '/admin/reports');
+      S.admReports = res;
+      render();
+    } else if (tab === 'settings' && !S.admSettings) {
+      const res = await api('GET', '/admin/settings');
+      S.admSettings = res.settings || {};
+      render();
+    }
+  } catch (e) {
+    // handled gracefully
+  }
 }
 
 /* ========================================================

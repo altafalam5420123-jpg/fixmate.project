@@ -2036,6 +2036,172 @@ function createApp(db = openDb()) {
     });
   }));
 
+  // ---------- 13-Section Admin Dashboard Endpoints ----------
+  app.get('/api/admin/customers', auth('admin'), h(async (req, res) => {
+    const { q } = req.query;
+    let sql = `
+      SELECT u.id, u.name, u.phone, u.wallet,
+        COUNT(b.id) AS bookings_count,
+        COALESCE(SUM(CASE WHEN b.paid = 1 THEN b.total ELSE 0 END), 0) AS total_spent
+      FROM users u
+      LEFT JOIN bookings b ON b.customer_id = u.id
+      WHERE u.role = 'customer'
+    `;
+    const params = [];
+    if (q && String(q).trim()) {
+      sql += ` AND (u.name LIKE $1 OR u.phone LIKE $1)`;
+      params.push(`%${String(q).trim()}%`);
+    }
+    sql += ` GROUP BY u.id, u.name, u.phone, u.wallet ORDER BY u.id DESC LIMIT 100`;
+    const result = await db.query(sql, params);
+    ok(res, { customers: result.rows });
+  }));
+
+  app.get('/api/admin/providers', auth('admin'), h(async (req, res) => {
+    const { skill, verified, online, q } = req.query;
+    let sql = `
+      SELECT u.id, u.name, u.phone, u.skill, u.wallet, u.online, u.id_verified,
+        u.experience_years, u.service_areas,
+        COUNT(b.id) AS jobs_count,
+        COALESCE(ROUND(AVG(r.stars), 1), 4.8) AS avg_rating
+      FROM users u
+      LEFT JOIN bookings b ON b.worker_id = u.id AND b.status = 'completed'
+      LEFT JOIN reviews r ON r.booking_id = b.id
+      WHERE u.role = 'worker'
+    `;
+    const conditions = [];
+    const params = [];
+    let idx = 1;
+    if (skill) { conditions.push(`u.skill = $${idx++}`); params.push(skill); }
+    if (verified !== undefined && verified !== '') { conditions.push(`u.id_verified = $${idx++}`); params.push(Number(verified) ? 1 : 0); }
+    if (online !== undefined && online !== '') { conditions.push(`u.online = $${idx++}`); params.push(Number(online) ? 1 : 0); }
+    if (q && String(q).trim()) { conditions.push(`(u.name LIKE $${idx} OR u.phone LIKE $${idx})`); params.push(`%${String(q).trim()}%`); idx++; }
+    if (conditions.length) sql += ' AND ' + conditions.join(' AND ');
+    sql += ` GROUP BY u.id, u.name, u.phone, u.skill, u.wallet, u.online, u.id_verified, u.experience_years, u.service_areas ORDER BY u.id DESC LIMIT 100`;
+    const result = await db.query(sql, params);
+    ok(res, { providers: result.rows });
+  }));
+
+  app.get('/api/admin/payments', auth('admin'), h(async (req, res) => {
+    const ordersRes = await db.query(`
+      SELECT p.id, p.booking_id, p.provider_order_id, p.provider_payment_id,
+        p.amount_paise, p.currency, p.status, p.created_at,
+        b.customer_id, u.name AS customer_name, u.phone AS customer_phone,
+        b.worker_id, w.name AS worker_name, s.name AS service_name
+      FROM payment_orders p
+      LEFT JOIN bookings b ON b.id = p.booking_id
+      LEFT JOIN users u ON u.id = b.customer_id
+      LEFT JOIN users w ON w.id = b.worker_id
+      LEFT JOIN services s ON s.id = b.service_id
+      ORDER BY p.id DESC LIMIT 100
+    `);
+    ok(res, { payments: ordersRes.rows });
+  }));
+
+  let platformCommissionPct = 15;
+  app.get('/api/admin/commission', auth('admin'), h(async (req, res) => {
+    const rev = await db.queryOne("SELECT COALESCE(SUM(total), 0) AS rev FROM bookings WHERE paid = 1");
+    const totalRev = Number(rev ? rev.rev : 0);
+    const platformEarnings = Math.round(totalRev * (platformCommissionPct / 100));
+    ok(res, {
+      commission_percentage: platformCommissionPct,
+      total_gmv: totalRev,
+      total_commission_earned: platformEarnings,
+      provider_net_payout: totalRev - platformEarnings
+    });
+  }));
+
+  app.post('/api/admin/commission', auth('admin'), h(async (req, res) => {
+    const pct = Number(req.body.percentage);
+    if (isNaN(pct) || pct < 0 || pct > 50) bad(400, 'Commission 0% se 50% ke beech honi chahiye');
+    platformCommissionPct = pct;
+    ok(res, { message: `Platform commission rate update ho kar ${pct}% ho gaya`, commission_percentage: pct });
+  }));
+
+  app.get('/api/admin/reviews', auth('admin'), h(async (req, res) => {
+    const result = await db.query(`
+      SELECT r.id, r.booking_id, r.user_id AS customer_id, r.stars, r.feedback, r.created_at,
+        u.name AS customer_name, u.phone AS customer_phone,
+        b.service_id, s.name AS service_name, s.cat AS service_category,
+        b.worker_id, w.name AS worker_name
+      FROM reviews r
+      LEFT JOIN users u ON u.id = r.user_id
+      LEFT JOIN bookings b ON b.id = r.booking_id
+      LEFT JOIN services s ON s.id = b.service_id
+      LEFT JOIN users w ON w.id = b.worker_id
+      ORDER BY r.id DESC LIMIT 100
+    `);
+    ok(res, { reviews: result.rows });
+  }));
+
+  app.get('/api/admin/notifications', auth('admin'), h(async (req, res) => {
+    const result = await db.query(`
+      SELECT n.id, n.user_id, n.title, n.body, n.read, n.created_at,
+        u.name AS user_name, u.role AS user_role, u.phone AS user_phone
+      FROM notifications n
+      LEFT JOIN users u ON u.id = n.user_id
+      ORDER BY n.id DESC LIMIT 100
+    `);
+    ok(res, { notifications: result.rows });
+  }));
+
+  app.post('/api/admin/notifications/broadcast', auth('admin'), h(async (req, res) => {
+    const { target_role = 'all', title, body } = req.body || {};
+    if (!title || !body) bad(400, 'Title aur message dono zaroori hain');
+    let userQuery = "SELECT id FROM users";
+    const params = [];
+    if (target_role && target_role !== 'all') {
+      userQuery += " WHERE role = $1";
+      params.push(target_role);
+    }
+    const targetUsers = await db.query(userQuery, params);
+    for (const u of targetUsers.rows) {
+      await db.query(
+        "INSERT INTO notifications (user_id, title, body, read) VALUES ($1, $2, $3, 0)",
+        [u.id, title, body]
+      );
+    }
+    ok(res, { message: `${targetUsers.rows.length} users ko notification send kiya gaya`, count: targetUsers.rows.length });
+  }));
+
+  app.get('/api/admin/reports', auth('admin'), h(async (req, res) => {
+    const stats = await db.query(`
+      SELECT status, COUNT(*) AS total_count, COALESCE(SUM(total), 0) AS total_value
+      FROM bookings
+      GROUP BY status
+    `);
+    const catStats = await db.query(`
+      SELECT s.cat, COUNT(b.id) AS bookings_count, COALESCE(SUM(b.total), 0) AS total_revenue
+      FROM services s
+      LEFT JOIN bookings b ON b.service_id = s.id
+      GROUP BY s.cat
+      ORDER BY bookings_count DESC
+    `);
+    ok(res, {
+      booking_breakdown: stats.rows,
+      category_performance: catStats.rows,
+      generated_at: new Date().toISOString()
+    });
+  }));
+
+  let platformSettings = {
+    city: 'Dhanbad',
+    support_phone: '1800-FIX-MATE',
+    emergency_surge_fee: 99,
+    commission_pct: 15,
+    maintenance_mode: false,
+    auto_assign_enabled: true
+  };
+
+  app.get('/api/admin/settings', auth('admin'), h(async (req, res) => {
+    ok(res, { settings: platformSettings });
+  }));
+
+  app.post('/api/admin/settings', auth('admin'), h(async (req, res) => {
+    platformSettings = { ...platformSettings, ...(req.body || {}) };
+    ok(res, { settings: platformSettings, message: 'Settings successfully update ho gaye' });
+  }));
+
   // ---------- Operations Support Staff Endpoints ----------
   app.get('/api/operations/overview', auth('admin', 'operations'), h(async (req, res) => {
     const today = new Date().toISOString().slice(0, 10);
