@@ -3745,6 +3745,266 @@ async function loadAdmData(tab) {
 }
 
 /* ========================================================
+   OPERATIONS SUPPORT DASHBOARD (Role: operations)
+   ======================================================== */
+function setOpsTab(tab) {
+  S.opsTab = tab;
+  render();
+  loadOpsData(tab);
+}
+
+async function loadOpsData(tab) {
+  if (!S.user || (S.user.role !== 'operations' && S.user.role !== 'admin')) return;
+  try {
+    if (!S.opsOverview) {
+      const res = await api('GET', '/operations/overview');
+      S.opsOverview = res.stats || {};
+    }
+    if ((tab === 'bookings' || !S.opsBookings) && !S.opsBookings) {
+      const res = await api('GET', '/admin/bookings');
+      S.opsBookings = res.bookings || [];
+    }
+    if ((tab === 'providers' || !S.opsProviders) && !S.opsProviders) {
+      const res = await api('GET', '/operations/providers');
+      S.opsProviders = res.providers || [];
+    }
+    if ((tab === 'tickets' || !S.opsTickets) && !S.opsTickets) {
+      const res = await api('GET', '/admin/complaints');
+      S.opsTickets = res.complaints || [];
+    }
+    render();
+  } catch (e) {}
+}
+
+function ops() {
+  const cur = S.opsTab || 'overview';
+  const u = S.user || { name: 'Support Staff', phone: 'Support' };
+  const st = S.opsOverview || {
+    total_bookings: 0,
+    pending_requests: 0,
+    in_progress_jobs: 0,
+    completed_today: 0,
+    open_complaints: 0,
+    online_providers: 0
+  };
+
+  return `
+    <div class="adm-hero" style="background:linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%)">
+      <div class="row">
+        <div>
+          <span class="adm-badge verified" style="background:rgba(255,255,255,0.25);color:#fff">Operations Support Desk</span>
+          <h2 style="font-size:22px;margin:6px 0 2px">Live Operations Control</h2>
+          <div style="font-size:12px;opacity:0.9">Support Staff: ${esc(u.name)} (${esc(u.phone)})</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn sm ghost" style="color:#fff;border-color:rgba(255,255,255,0.4)" onclick="refresh().then(() => render());toast('Operations data refreshed!')">
+            🔄
+          </button>
+          <button class="btn sm ghost" style="color:#fff;border-color:rgba(255,255,255,0.4)" onclick="out()">
+            Logout
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="adm-subnav">
+      <button class="chip ${cur === 'overview' ? 'on' : ''}" onclick="setOpsTab('overview')">📊 Live Overview</button>
+      <button class="chip ${cur === 'bookings' ? 'on' : ''}" onclick="setOpsTab('bookings')">📋 Bookings Feed</button>
+      <button class="chip ${cur === 'providers' ? 'on' : ''}" onclick="setOpsTab('providers')">🛠️ Technicians Roster</button>
+      <button class="chip ${cur === 'tickets' ? 'on' : ''}" onclick="setOpsTab('tickets')">🎫 Support & Complaints</button>
+    </div>
+
+    ${cur === 'overview' ? opsOverview(st) : ''}
+    ${cur === 'bookings' ? opsBookings() : ''}
+    ${cur === 'providers' ? opsProviders() : ''}
+    ${cur === 'tickets' ? opsTickets() : ''}
+  `;
+}
+
+function opsOverview(st) {
+  return `
+    <div class="adm-kpi-grid">
+      <div class="adm-kpi-card highlight">
+        <span class="mut" style="font-size:11px;font-weight:700">PENDING REQUESTS</span>
+        <div class="adm-kpi-val" style="color:var(--orange)">${st.pending_requests || 0}</div>
+        <div class="adm-kpi-sub">Needs technician dispatch</div>
+      </div>
+      <div class="adm-kpi-card">
+        <span class="mut" style="font-size:11px;font-weight:700">IN PROGRESS JOBS</span>
+        <div class="adm-kpi-val" style="color:var(--teal)">${st.in_progress_jobs || 0}</div>
+        <div class="adm-kpi-sub">Workers active on site</div>
+      </div>
+      <div class="adm-kpi-card">
+        <span class="mut" style="font-size:11px;font-weight:700">COMPLETED TODAY</span>
+        <div class="adm-kpi-val">${st.completed_today || 0}</div>
+        <div class="adm-kpi-sub">Today's successful jobs</div>
+      </div>
+      <div class="adm-kpi-card orange">
+        <span class="mut" style="font-size:11px;font-weight:700">OPEN COMPLAINTS</span>
+        <div class="adm-kpi-val" style="color:#DC2626">${st.open_complaints || 0}</div>
+        <div class="adm-kpi-sub">Require staff resolution</div>
+      </div>
+      <div class="adm-kpi-card">
+        <span class="mut" style="font-size:11px;font-weight:700">ONLINE PROVIDERS</span>
+        <div class="adm-kpi-val">🟢 ${st.online_providers || 0}</div>
+        <div class="adm-kpi-sub">Ready to receive jobs</div>
+      </div>
+      <div class="adm-kpi-card">
+        <span class="mut" style="font-size:11px;font-weight:700">TOTAL PLATFORM BOOKINGS</span>
+        <div class="adm-kpi-val">${st.total_bookings || 0}</div>
+        <div class="adm-kpi-sub">All-time bookings</div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:16px;gap:10px">
+      <button class="btn acc" onclick="setOpsTab('bookings')">📋 Monitor Live Bookings</button>
+      <button class="btn ghost" onclick="setOpsTab('tickets')">🎫 Resolve Complaints</button>
+    </div>
+  `;
+}
+
+function opsBookings() {
+  const list = S.opsBookings || S.admBookings || [];
+  const filter = S.opsBookingFilter || 'all';
+  const filtered = filter === 'all' ? list : list.filter((b) => b.status === filter);
+
+  return `
+    <div class="chips" style="margin-bottom:12px">
+      <button class="chip ${filter === 'all' ? 'on' : ''}" onclick="S.opsBookingFilter='all';render()">All (${list.length})</button>
+      <button class="chip ${filter === 'requested' ? 'on' : ''}" onclick="S.opsBookingFilter='requested';render()">Requested (${list.filter((b) => b.status === 'requested').length})</button>
+      <button class="chip ${filter === 'in_progress' ? 'on' : ''}" onclick="S.opsBookingFilter='in_progress';render()">In Progress</button>
+      <button class="chip ${filter === 'completed' ? 'on' : ''}" onclick="S.opsBookingFilter='completed';render()">Completed</button>
+      <button class="chip ${filter === 'cancelled' ? 'on' : ''}" onclick="S.opsBookingFilter='cancelled';render()">Cancelled</button>
+    </div>
+
+    ${filtered.length ? filtered.map((b) => `
+      <div class="adm-item-card">
+        <div class="row">
+          <b>#${b.id} ${esc(b.service_name || 'Service')}</b>
+          <span class="adm-badge ${b.status}">${b.status.replace(/_/g, ' ')}</span>
+        </div>
+        <div class="mut" style="font-size:12px;margin:4px 0">
+          Customer: <b>${esc(b.customer_name || 'Customer')}</b> (${esc(b.customer_phone || '')})<br>
+          Slot: <b>${esc(b.slot)}</b> · Address: ${esc(b.address || 'Dhanbad')}
+        </div>
+        <div class="row" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--bd)">
+          <div>
+            ${b.worker_name ? `
+              <span style="font-size:12px">Tech: <b>${esc(b.worker_name)}</b> (${esc(b.worker_phone || '')})</span>
+            ` : `
+              <span class="adm-badge open">⚠️ No Technician Assigned</span>
+            `}
+          </div>
+          <b>${inr(b.total || b.base_price || 0)} ${b.paid ? '✅ Paid' : '⏳ Unpaid'}</b>
+        </div>
+        <div class="row" style="margin-top:10px;gap:8px">
+          <button class="btn sm ghost" onclick="openAdminAssignModal(${b.id})">
+            ${b.worker_name ? 'Reassign Tech' : '👉 Assign Technician'}
+          </button>
+          ${b.status !== 'completed' && b.status !== 'cancelled' ? `
+            <button class="btn sm ghost" style="color:var(--bad)" onclick="supportCancelBooking(${b.id})">
+              ❌ Support Cancel
+            </button>
+          ` : ''}
+          <a href="tel:${esc(b.customer_phone)}" class="btn sm ghost" style="text-decoration:none;width:auto;padding:6px 10px;font-size:12px">
+            ${ic('phone', 12)} Call
+          </a>
+        </div>
+      </div>
+    `).join('') : '<div class="card mut" style="text-align:center;padding:24px">No bookings found in this view.</div>'}
+  `;
+}
+
+function supportCancelBooking(id) {
+  const reason = prompt('Cancellation ka karan daalein (Customer request / Tech unavailable):', 'Customer requested cancellation via Support');
+  if (reason === null) return;
+  act(async () => {
+    const res = await api('POST', `/operations/bookings/${id}/cancel`, { reason });
+    S.opsBookings = null;
+    await loadOpsData('bookings');
+    toast(res.message || 'Booking cancel ho gayi!');
+  });
+}
+
+function opsProviders() {
+  const list = S.opsProviders || [];
+  const onlineOnly = S.opsOnlineOnly ?? false;
+  const filtered = onlineOnly ? list.filter((p) => p.online) : list;
+
+  return `
+    <div class="row" style="margin-bottom:12px">
+      <div>
+        <h3 style="margin:0;font-size:17px">🛠️ Service Providers Availability Roster</h3>
+        <div class="mut" style="font-size:12px">Find available online technicians to dispatch for emergency or unassigned jobs</div>
+      </div>
+      <button class="chip ${onlineOnly ? 'on' : ''}" onclick="S.opsOnlineOnly=!S.opsOnlineOnly;render()">
+        ${onlineOnly ? '🟢 Online Only' : 'All Providers'}
+      </button>
+    </div>
+
+    ${filtered.length ? filtered.map((p) => `
+      <div class="adm-item-card">
+        <div class="row">
+          <div>
+            <b>${esc(p.name)}</b>
+            <div class="mut" style="font-size:12px">${esc(p.skill || 'Technician')} · ${p.experience_years != null ? p.experience_years + ' yrs exp' : 'Experienced'}</div>
+          </div>
+          <span class="adm-badge ${p.online ? 'resolved' : 'unverified'}">
+            ${p.online ? '🟢 Online (Available)' : '⚪ Offline'}
+          </span>
+        </div>
+        <div class="mut" style="font-size:12px;margin:6px 0">
+          Phone: <b>${esc(p.phone)}</b> · Areas: ${esc(p.service_areas || 'Dhanbad')}<br>
+          Verification: ${p.id_verified ? '✅ Verified Partner' : '⚠️ Pending KYC'}
+        </div>
+        <div class="row" style="margin-top:8px">
+          <a href="tel:${esc(p.phone)}" class="btn sm acc" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px">
+            ${ic('phone', 14)} Call Technician
+          </a>
+        </div>
+      </div>
+    `).join('') : '<div class="card mut" style="text-align:center;padding:24px">No providers found. Click refresh.</div>'}
+  `;
+}
+
+function opsTickets() {
+  const list = S.opsTickets || [];
+  const filter = S.opsTicketFilter || 'all';
+  const filtered = filter === 'all' ? list : list.filter((c) => c.status === filter);
+
+  return `
+    <div class="chips" style="margin-bottom:12px">
+      <button class="chip ${filter === 'all' ? 'on' : ''}" onclick="S.opsTicketFilter='all';render()">All (${list.length})</button>
+      <button class="chip ${filter === 'open' ? 'on' : ''}" onclick="S.opsTicketFilter='open';render()">Open (${list.filter((c) => c.status === 'open').length})</button>
+      <button class="chip ${filter === 'resolved' ? 'on' : ''}" onclick="S.opsTicketFilter='resolved';render()">Resolved</button>
+    </div>
+
+    ${filtered.length ? filtered.map((c) => `
+      <div class="adm-item-card">
+        <div class="row">
+          <b>Ticket #${c.id}: ${esc(c.category)}</b>
+          <span class="adm-badge ${c.status}">${c.status}</span>
+        </div>
+        <div class="mut" style="font-size:12px;margin:6px 0">
+          Customer: <b>${esc(c.customer_name || 'Customer')}</b> (${esc(c.customer_phone || '')})<br>
+          Problem: <span style="color:var(--ink)">"${esc(c.description)}"</span>
+        </div>
+        ${c.status !== 'resolved' && c.status !== 'closed' ? `
+          <div class="row" style="margin-top:10px">
+            <button class="btn sm acc" onclick="openAdminResolveModal(${c.id})">
+              👉 Resolve Ticket & Issue Refund
+            </button>
+            <a href="tel:${esc(c.customer_phone)}" class="btn sm ghost" style="text-decoration:none;width:auto;padding:8px 12px">
+              ${ic('phone', 14)} Call Customer
+            </a>
+          </div>
+        ` : ''}
+      </div>
+    `).join('') : '<div class="card mut" style="text-align:center;padding:24px">No support tickets in this view.</div>'}
+  `;
+}
+
+/* ========================================================
    DIAGNOSIS & SEARCH HELPER
    ======================================================== */
 const KW = [
@@ -3953,6 +4213,17 @@ async function refresh() {
       if (workersRes && workersRes.users) S.admWorkers = workersRes.users;
       if (complaintsRes && complaintsRes.complaints) S.admComplaints = complaintsRes.complaints;
       S.coupons = cpnRes.coupons || [];
+    } else if (S.user.role === 'operations') {
+      const [opsRes, bookingsRes, complaintsRes, providersRes] = await Promise.all([
+        api('GET', '/operations/overview').catch(() => ({ stats: {} })),
+        api('GET', '/admin/bookings').catch(() => ({ bookings: [] })),
+        api('GET', '/admin/complaints').catch(() => ({ complaints: [] })),
+        api('GET', '/operations/providers').catch(() => ({ providers: [] }))
+      ]);
+      if (opsRes && opsRes.stats) S.opsOverview = opsRes.stats;
+      if (bookingsRes && bookingsRes.bookings) S.opsBookings = bookingsRes.bookings;
+      if (complaintsRes && complaintsRes.complaints) S.opsTickets = complaintsRes.complaints;
+      if (providersRes && providersRes.providers) S.opsProviders = providersRes.providers;
     } else if (S.user.role === 'worker') {
       const [w, b, statsRes, reviewsRes] = await Promise.all([
         api('GET', '/wallet'),
@@ -4080,7 +4351,7 @@ function render() {
   } else if (S.scr === 'login' || !S.user) {
     a.innerHTML = login();
   } else {
-    a.innerHTML = ({ home, book, bk, mo, wk, pf, adm }[S.scr] || (S.user?.role === 'admin' ? adm : (S.user?.role === 'worker' ? wk : home)))() + renderModal();
+    a.innerHTML = ({ home, book, bk, mo, wk, pf, adm, ops }[S.scr] || (S.user?.role === 'admin' ? adm : (S.user?.role === 'operations' ? ops : (S.user?.role === 'worker' ? wk : home))))() + renderModal();
   }
 
   const showNav = S.user && !['splash', 'onboarding', 'login'].includes(S.scr);
@@ -4105,6 +4376,20 @@ function render() {
         $('adm-complaints')?.classList.toggle('on', cur === 'complaints');
         const openComplaintsCount = (S.admComplaints || []).filter((c) => c.status === 'open').length;
         if (openComplaintsCount) $('adm-complaints')?.insertAdjacentHTML('beforeend', `<span class="dot">${openComplaintsCount}</span>`);
+      } else if (S.user.role === 'operations') {
+        const cur = S.opsTab || 'overview';
+        navDiv.innerHTML = `
+          <button id="ops-overview" onclick="setOpsTab('overview')"><span class="ni" data-i="spark"></span>Overview</button>
+          <button id="ops-bookings" onclick="setOpsTab('bookings')"><span class="ni" data-i="list"></span>Bookings</button>
+          <button id="ops-providers" onclick="setOpsTab('providers')"><span class="ni" data-i="tool"></span>Techs</button>
+          <button id="ops-tickets" onclick="setOpsTab('tickets')"><span class="ni" data-i="alert"></span>Tickets</button>
+        `;
+        $('ops-overview')?.classList.toggle('on', cur === 'overview');
+        $('ops-bookings')?.classList.toggle('on', cur === 'bookings');
+        $('ops-providers')?.classList.toggle('on', cur === 'providers');
+        $('ops-tickets')?.classList.toggle('on', cur === 'tickets');
+        const openComplaintsCount = (S.opsTickets || []).filter((c) => c.status === 'open').length;
+        if (openComplaintsCount) $('ops-tickets')?.insertAdjacentHTML('beforeend', `<span class="dot">${openComplaintsCount}</span>`);
       } else if (S.user.role === 'worker') {
         const cur = S.wkTab || 'jobs';
         navDiv.innerHTML = `

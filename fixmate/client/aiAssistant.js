@@ -110,17 +110,16 @@
     const root = document.createElement('div');
     root.id = 'fixmate-ai-root';
     root.innerHTML = `
-      <!-- Floating Action Pill -->
-      <button id="ai-floating-btn" class="ai-fab-pill" onclick="window.FixMateAI.open('voice')" aria-label="Talk to FixMate AI">
+      <!-- Floating Circular Movable AI Action Button -->
+      <button id="ai-floating-btn" class="ai-fab-circle" aria-label="Talk to FixMate AI" title="FixMate AI (Drag to move)">
         <span class="ai-fab-icon">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
             <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
             <line x1="12" y1="19" x2="12" y2="22"/>
           </svg>
         </span>
-        <span class="ai-fab-text">Talk to FixMate AI</span>
-        <span class="ai-fab-sparkle">✨</span>
+        <span class="ai-badge-dot">✨</span>
       </button>
 
       <!-- Assistant Modal Backdrop -->
@@ -236,8 +235,97 @@
     `;
 
     document.body.appendChild(root);
+    setupMovableAIButton(document.getElementById('ai-floating-btn'));
     setupWaveform();
     renderMessages();
+  }
+
+  // Pointer & Touch Draggable Clamped Floating AI Assistant
+  function setupMovableAIButton(btn) {
+    if (!btn) return;
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let startLeft = 0, startTop = 0;
+    let hasMoved = false;
+
+    // Restore saved clamped position
+    try {
+      const saved = JSON.parse(localStorage.getItem('fm_ai_pos') || 'null');
+      if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
+        const maxX = Math.max(10, window.innerWidth - 68);
+        const maxY = Math.max(10, window.innerHeight - 74);
+        const left = Math.max(10, Math.min(saved.left, maxX));
+        const top = Math.max(10, Math.min(saved.top, maxY));
+        btn.style.left = left + 'px';
+        btn.style.top = top + 'px';
+        btn.style.right = 'auto';
+        btn.style.bottom = 'auto';
+      }
+    } catch (e) {}
+
+    const onPointerDown = (e) => {
+      if (e.button && e.button !== 0) return;
+      isDragging = true;
+      hasMoved = false;
+      startX = e.clientX;
+      startY = e.clientY;
+
+      const rect = btn.getBoundingClientRect();
+      startLeft = rect.left;
+      startTop = rect.top;
+
+      btn.classList.add('is-dragging');
+      try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+    };
+
+    const onPointerMove = (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      if (!hasMoved && Math.hypot(dx, dy) > 6) {
+        hasMoved = true;
+      }
+
+      if (hasMoved) {
+        e.preventDefault();
+        const maxX = Math.max(10, window.innerWidth - 68);
+        const maxY = Math.max(10, window.innerHeight - 74);
+        const newLeft = Math.max(10, Math.min(startLeft + dx, maxX));
+        const newTop = Math.max(10, Math.min(startTop + dy, maxY));
+
+        btn.style.left = newLeft + 'px';
+        btn.style.top = newTop + 'px';
+        btn.style.right = 'auto';
+        btn.style.bottom = 'auto';
+      }
+    };
+
+    const onPointerUp = (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+      btn.classList.remove('is-dragging');
+      try { btn.releasePointerCapture(e.pointerId); } catch (err) {}
+
+      if (hasMoved) {
+        try {
+          const rect = btn.getBoundingClientRect();
+          localStorage.setItem('fm_ai_pos', JSON.stringify({ left: Math.round(rect.left), top: Math.round(rect.top) }));
+        } catch (err) {}
+      } else {
+        // Toggle AI Chat Drawer when clicked
+        if (AssistantState.isOpen) {
+          window.FixMateAI.close();
+        } else {
+          window.FixMateAI.open('voice');
+        }
+      }
+    };
+
+    btn.addEventListener('pointerdown', onPointerDown);
+    btn.addEventListener('pointermove', onPointerMove);
+    btn.addEventListener('pointerup', onPointerUp);
+    btn.addEventListener('pointercancel', onPointerUp);
   }
 
   function setupWaveform() {
