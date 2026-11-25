@@ -539,11 +539,6 @@ async function signedIn(d) {
   scrollTo(0, 0);
   toast('Welcome, ' + d.user.name);
 }
-  await refresh();
-  render();
-  scrollTo(0, 0);
-  toast('Welcome, ' + d.user.name);
-}
 
 function out() {
   if (S.lg.timer) clearInterval(S.lg.timer);
