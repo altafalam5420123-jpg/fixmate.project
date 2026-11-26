@@ -61,6 +61,18 @@ CREATE TABLE IF NOT EXISTS users (
   wallet INTEGER NOT NULL DEFAULT 0 CHECK (wallet >= 0),
   online SMALLINT NOT NULL DEFAULT 1 CHECK (online IN (0, 1)),
   token_version INTEGER NOT NULL DEFAULT 0 CHECK (token_version >= 0),
+  email VARCHAR(150),
+  password_hash TEXT,
+  language VARCHAR(20) NOT NULL DEFAULT 'en',
+  bio TEXT,
+  base_rate INTEGER,
+  verification_status VARCHAR(20) NOT NULL DEFAULT 'approved' CHECK (verification_status IN ('pending', 'approved', 'rejected', 'suspended')),
+  verification_notes TEXT,
+  verification_doc_type VARCHAR(50),
+  verification_submitted_at TIMESTAMPTZ,
+  service_categories TEXT,
+  pricing_json TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT users_worker_skill_check CHECK (role != 'worker' OR skill IS NOT NULL)
 );
 
@@ -308,6 +320,26 @@ CREATE TABLE IF NOT EXISTS service_areas (
   is_active SMALLINT NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS provider_availability (
+  id SERIAL PRIMARY KEY,
+  provider_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day_of_week SMALLINT NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6),
+  is_available SMALLINT NOT NULL DEFAULT 1 CHECK (is_available IN (0, 1)),
+  start_time VARCHAR(10) NOT NULL DEFAULT '09:00',
+  end_time VARCHAR(10) NOT NULL DEFAULT '20:00',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (provider_id, day_of_week)
+);
+
+CREATE TABLE IF NOT EXISTS provider_job_rejections (
+  id SERIAL PRIMARY KEY,
+  booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+  worker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reason TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (booking_id, worker_id)
+);
 `;
 
 function getPoolConfig(customConfig = {}) {
@@ -362,6 +394,18 @@ function openMemoryDb() {
       id_document_url TEXT,
       id_verified INTEGER DEFAULT 1,
       service_areas TEXT DEFAULT 'All Dhanbad',
+      email TEXT,
+      password_hash TEXT,
+      language TEXT NOT NULL DEFAULT 'en',
+      bio TEXT,
+      base_rate INTEGER,
+      verification_status TEXT NOT NULL DEFAULT 'approved' CHECK (verification_status IN ('pending', 'approved', 'rejected', 'suspended')),
+      verification_notes TEXT,
+      verification_doc_type TEXT,
+      verification_submitted_at TEXT,
+      service_categories TEXT,
+      pricing_json TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CHECK (role != 'worker' OR skill IS NOT NULL)
     );
     CREATE TABLE otps (
@@ -379,15 +423,22 @@ function openMemoryDb() {
       name TEXT NOT NULL,
       price INTEGER NOT NULL CHECK (price >= 0),
       rating REAL NOT NULL CHECK (rating >= 0 AND rating <= 5),
+      description TEXT,
+      duration_minutes INTEGER DEFAULT 60,
+      warranty_days INTEGER DEFAULT 30,
       UNIQUE (cat, name)
     );
     CREATE TABLE bookings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       customer_id INTEGER NOT NULL REFERENCES users(id),
       worker_id INTEGER REFERENCES users(id),
+      preferred_worker_id INTEGER REFERENCES users(id),
       service_id INTEGER NOT NULL REFERENCES services(id),
       slot TEXT NOT NULL,
+      scheduled_date TEXT,
+      scheduled_time TEXT,
       address TEXT NOT NULL,
+      formatted_address TEXT,
       pay TEXT NOT NULL CHECK (pay IN ('wallet', 'cash', 'razorpay')),
       status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'assigned', 'on_the_way', 'inspecting', 'quoted', 'in_progress', 'completed', 'closed', 'cancelled')),
       start_code TEXT NOT NULL,
@@ -396,6 +447,7 @@ function openMemoryDb() {
       total INTEGER NOT NULL DEFAULT 0 CHECK (total >= 0),
       paid INTEGER NOT NULL DEFAULT 0 CHECK (paid IN (0, 1)),
       issue_desc TEXT,
+      instructions TEXT,
       photo_url TEXT,
       coupon_code TEXT,
       discount_amount INTEGER DEFAULT 0,
@@ -405,6 +457,8 @@ function openMemoryDb() {
       parts_desc TEXT,
       warranty_days INTEGER DEFAULT 30,
       completed_at TEXT,
+      cancellation_reason TEXT,
+      cancelled_at TEXT,
       customer_lat REAL,
       customer_lng REAL,
       worker_lat REAL,
@@ -591,6 +645,24 @@ function openMemoryDb() {
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE provider_availability (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      provider_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      day_of_week INTEGER NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6),
+      is_available INTEGER NOT NULL DEFAULT 1 CHECK (is_available IN (0, 1)),
+      start_time TEXT NOT NULL DEFAULT '09:00',
+      end_time TEXT NOT NULL DEFAULT '20:00',
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (provider_id, day_of_week)
+    );
+    CREATE TABLE provider_job_rejections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+      worker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reason TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (booking_id, worker_id)
+    );
   `);
 
   const seed = sqlite.prepare('INSERT OR IGNORE INTO services (id, cat, name, price, rating) VALUES (?, ?, ?, ?, ?)');
@@ -768,6 +840,30 @@ function openDb(config = {}) {
             ALTER TABLE users ADD COLUMN IF NOT EXISTS id_document_url TEXT;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS id_verified SMALLINT DEFAULT 1;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS service_areas VARCHAR(255) DEFAULT 'All Dhanbad';
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(150);
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(20) NOT NULL DEFAULT 'en';
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS base_rate INTEGER;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_status VARCHAR(20) NOT NULL DEFAULT 'approved';
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_notes TEXT;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_doc_type VARCHAR(50);
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_submitted_at TIMESTAMPTZ;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS service_categories TEXT;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS pricing_json TEXT;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+            ALTER TABLE services ADD COLUMN IF NOT EXISTS description TEXT;
+            ALTER TABLE services ADD COLUMN IF NOT EXISTS duration_minutes INTEGER DEFAULT 60;
+            ALTER TABLE services ADD COLUMN IF NOT EXISTS warranty_days INTEGER DEFAULT 30;
+
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS preferred_worker_id INTEGER REFERENCES users(id);
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS scheduled_date VARCHAR(20);
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS scheduled_time VARCHAR(40);
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS instructions TEXT;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS formatted_address TEXT;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+            ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
 
             ALTER TABLE notifications ADD COLUMN IF NOT EXISTS booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE;
             ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_key VARCHAR(100);

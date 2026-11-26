@@ -103,6 +103,10 @@
     } catch (e) {}
   }
 
+  function icon(name, sz = 16) {
+    return typeof window.ic === 'function' ? window.ic(name, sz) : '';
+  }
+
   // Inject UI container into DOM
   function initAssistantUI() {
     if (document.getElementById('fixmate-ai-root')) return;
@@ -111,16 +115,12 @@
     root.id = 'fixmate-ai-root';
     root.innerHTML = `
       <!-- Floating Action Pill -->
-      <button id="ai-floating-btn" class="ai-fab-pill" onclick="window.FixMateAI.open('voice')" aria-label="Talk to FixMate AI">
+      <button id="ai-floating-btn" class="ai-fab-pill" onclick="window.FixMateAI.open('voice')" aria-label="Talk to FixMate AI" title="Talk to FixMate AI">
         <span class="ai-fab-icon">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-            <line x1="12" y1="19" x2="12" y2="22"/>
-          </svg>
+          ${icon('mic', 20)}
         </span>
         <span class="ai-fab-text">Talk to FixMate AI</span>
-        <span class="ai-fab-sparkle">✨</span>
+        <span class="ai-fab-sparkle">${icon('sparkles', 14)}</span>
       </button>
 
       <!-- Assistant Modal Backdrop -->
@@ -132,9 +132,7 @@
         <div class="ai-header">
           <div class="ai-header-brand">
             <div class="ai-avatar-badge">
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/>
-              </svg>
+              ${icon('sparkles', 20)}
             </div>
             <div>
               <div class="ai-title">FixMate AI Assistant</div>
@@ -146,16 +144,13 @@
           </div>
 
           <div class="ai-header-controls">
-            <button id="ai-lang-btn" class="ai-lang-pill" onclick="window.FixMateAI.cycleLanguage()" title="Language badlo">Auto 🌐</button>
-            <button class="ai-header-btn" onclick="window.FixMateAI.clearHistory()" title="History saaf karein">🗑️</button>
-            <button id="ai-mode-toggle" class="ai-header-btn" onclick="window.FixMateAI.toggleMode()" title="Mode badlo">
-              <span id="ai-mode-icon">💬</span>
+            <button id="ai-lang-btn" class="ai-lang-pill" onclick="window.FixMateAI.cycleLanguage()" title="Switch AI language">${icon('globe', 13)} Auto</button>
+            <button class="ai-header-btn" onclick="window.FixMateAI.clearHistory()" title="Clear conversation history" aria-label="Clear history">${icon('trash', 16)}</button>
+            <button id="ai-mode-toggle" class="ai-header-btn" onclick="window.FixMateAI.toggleMode()" title="Switch Voice / Chat mode" aria-label="Switch mode">
+              <span id="ai-mode-icon">${icon('messageSquare', 16)}</span>
             </button>
-            <button class="ai-header-btn" onclick="window.FixMateAI.close()" title="Band karein">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
+            <button class="ai-header-btn" onclick="window.FixMateAI.close()" title="Close assistant" aria-label="Close">
+              ${icon('x', 18)}
             </button>
           </div>
         </div>
@@ -169,7 +164,7 @@
                 "Bol kar batayein: Meri washing machine se paani leak ho raha hai..."
               </div>
               <div id="ai-mic-perm-banner" class="ai-perm-banner">
-                <b>Microphone Permission Blocked:</b> Browser address bar mein 🔒 icon par click karke Microphone "Allow" karein, ya neeche <b>Chat Mode</b> use karein.
+                <b>Microphone Permission Blocked:</b> Address bar mein lock icon par click karke Microphone "Allow" karein, ya neeche <b>Chat Mode</b> use karein.
                 <div style="margin-top:6px">
                   <button class="ai-ctl-btn" style="padding:4px 10px;font-size:11px" onclick="window.FixMateAI.startListening()">Retry Mic</button>
                 </div>
@@ -181,11 +176,7 @@
               <canvas id="ai-waveform-canvas" width="300" height="70" class="ai-waveform"></canvas>
               <div id="ai-mic-orb" class="ai-orb-ring" onclick="window.FixMateAI.toggleListening()">
                 <div class="ai-orb-core">
-                  <svg id="ai-mic-svg" viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                    <line x1="12" y1="19" x2="12" y2="22"/>
-                  </svg>
+                  ${icon('mic', 32)}
                 </div>
               </div>
               <div id="ai-voice-action-hint" class="ai-action-hint">Tap mic to speak • Bolne ke liye tap karein</div>
@@ -194,13 +185,13 @@
             <!-- Voice Controls Bar -->
             <div class="ai-voice-controls" style="flex-wrap:wrap">
               <button id="ai-mute-btn" class="ai-ctl-btn" onclick="window.FixMateAI.toggleMute()">
-                <span id="ai-mute-icon">🔊</span> Mute
+                <span id="ai-mute-icon">${icon('volume2', 15)}</span> Mute
               </button>
               <button class="ai-ctl-btn end-call" onclick="window.FixMateAI.endVoiceCall()">
-                <span>📞</span> End Call
+                ${icon('phoneOff', 15)} End Call
               </button>
               <button class="ai-ctl-btn switch" onclick="window.FixMateAI.setMode('chat')">
-                <span>💬</span> Chat
+                ${icon('messageSquare', 15)} Chat
               </button>
             </div>
           </div>
@@ -210,12 +201,12 @@
         <div id="ai-chat-view" class="ai-view-container" style="display:none;">
           <!-- Quick Suggestions Chips -->
           <div class="ai-suggestions-bar">
-            <button class="ai-chip" onclick="window.FixMateAI.sendSuggested('Meri washing machine se paani leak ho raha hai')">🌀 Washing machine leak</button>
-            <button class="ai-chip" onclick="window.FixMateAI.sendSuggested('AC thandi hawa nahi de raha')">❄️ AC cooling issue</button>
-            <button class="ai-chip" onclick="window.FixMateAI.sendSuggested('Mera booking status batao')">📋 Booking status</button>
-            <button class="ai-chip" onclick="window.FixMateAI.sendSuggested('Mera invoice bill explain karo')">🧾 Invoice/GST</button>
-            <button class="ai-chip" onclick="window.FixMateAI.sendSuggested('30 day warranty policy kya hai?')">🛡️ Warranty FAQ</button>
-            <button class="ai-chip" onclick="window.FixMateAI.sendSuggested('Customer care support chahiye')">📞 Support</button>
+            <button class="ai-chip" onclick="window.FixMateAI.sendSuggested('Meri washing machine se paani leak ho raha hai')">${icon('disc', 13)} Washing machine leak</button>
+            <button class="ai-chip" onclick="window.FixMateAI.sendSuggested('AC thandi hawa nahi de raha')">${icon('snow', 13)} AC cooling issue</button>
+            <button class="ai-chip" onclick="window.FixMateAI.sendSuggested('Mera booking status batao')">${icon('list', 13)} Booking status</button>
+            <button class="ai-chip" onclick="window.FixMateAI.sendSuggested('Mera invoice bill explain karo')">${icon('fileText', 13)} Invoice / GST</button>
+            <button class="ai-chip" onclick="window.FixMateAI.sendSuggested('30 day warranty policy kya hai?')">${icon('shieldCheck', 13)} Warranty FAQ</button>
+            <button class="ai-chip" onclick="window.FixMateAI.sendSuggested('Customer care support chahiye')">${icon('phone', 13)} Support</button>
           </div>
 
           <!-- Chat Message Thread -->
@@ -257,7 +248,7 @@
 
       ctx.beginPath();
       ctx.lineWidth = 2.5;
-      ctx.strokeStyle = isActive ? (AssistantState.status === 'speaking' ? '#FA6A00' : '#006A60') : 'rgba(0,106,96,0.2)';
+      ctx.strokeStyle = isActive ? (AssistantState.status === 'speaking' ? '#08A6C1' : '#1677E8') : 'rgba(22,119,232,0.22)';
 
       for (let x = 0; x < canvas.width; x++) {
         const y = canvas.height / 2 + Math.sin(x * freq + phase) * amp * Math.sin((x / canvas.width) * Math.PI);
@@ -269,7 +260,7 @@
       if (isActive) {
         ctx.beginPath();
         ctx.lineWidth = 1.5;
-        ctx.strokeStyle = AssistantState.status === 'speaking' ? 'rgba(250,106,0,0.45)' : 'rgba(47,158,122,0.45)';
+        ctx.strokeStyle = AssistantState.status === 'speaking' ? 'rgba(8,166,193,0.45)' : 'rgba(61,146,245,0.45)';
         for (let x = 0; x < canvas.width; x++) {
           const y = canvas.height / 2 + Math.sin(x * (freq * 1.5) - phase) * (amp * 0.7) * Math.sin((x / canvas.width) * Math.PI);
           if (x === 0) ctx.moveTo(x, y);
@@ -309,11 +300,11 @@
 
   function cycleLanguage() {
     const order = ['auto', 'hi', 'en'];
-    const labels = { auto: 'Auto 🌐', hi: 'हिंदी 🇮🇳', en: 'English' };
+    const labels = { auto: 'Auto', hi: 'Hindi', en: 'English' };
     const idx = (order.indexOf(AssistantState.language) + 1) % order.length;
     AssistantState.language = order[idx];
     const btn = document.getElementById('ai-lang-btn');
-    if (btn) btn.textContent = labels[AssistantState.language];
+    if (btn) btn.innerHTML = `${icon('globe', 13)} ${labels[AssistantState.language]}`;
   }
 
   async function clearHistory() {
@@ -340,7 +331,7 @@
       const isUser = m.role === 'user';
       return `
         <div class="ai-msg-row ${isUser ? 'user' : 'assistant'}">
-          ${!isUser ? `<div class="ai-msg-av">✨</div>` : ''}
+          ${!isUser ? `<div class="ai-msg-av">${icon('sparkles', 14)}</div>` : ''}
           <div class="ai-bubble ${isUser ? 'user' : 'assistant'}">
             <div class="ai-msg-text">${escapeHtml(m.content).replace(/\n/g, '<br>')}</div>
             ${m.cards ? renderCardsHtml(m.cards) : ''}
@@ -350,7 +341,7 @@
       `;
     }).join('') + (AssistantState.status === 'processing' ? `
       <div class="ai-msg-row assistant">
-        <div class="ai-msg-av">✨</div>
+        <div class="ai-msg-av">${icon('sparkles', 14)}</div>
         <div class="ai-bubble assistant typing">
           <span class="ai-typing-dot"></span>
           <span class="ai-typing-dot"></span>
@@ -370,7 +361,7 @@
         const b = c.result.booking;
         return `
           <div class="ai-card success-booking">
-            <div class="ai-card-badge">✅ Booking Confirmed</div>
+            <div class="ai-card-badge">${icon('checkCircle', 13)} Booking Confirmed</div>
             <div class="ai-card-title">${escapeHtml(b.service)}</div>
             <div class="ai-card-row"><span>Booking ID:</span> <b>#${b.id}</b></div>
             <div class="ai-card-row"><span>Slot:</span> <b>${escapeHtml(b.slot)}</b></div>
@@ -387,7 +378,7 @@
           <div class="ai-card service-preview">
             <div class="ai-card-title">${escapeHtml(s.name)}</div>
             <div class="ai-card-row"><span>Base Fee:</span> <b>${escapeHtml(s.base_price)}</b></div>
-            <div class="ai-card-row"><span>Rating:</span> <b>⭐ ${s.rating} (Verified)</b></div>
+            <div class="ai-card-row"><span>Rating:</span> <b>${icon('star', 12, true)} ${s.rating} (Verified)</b></div>
             ${causes.length ? `<div class="ai-card-note"><b>Common Causes:</b> ${escapeHtml(causes.slice(0, 2).join('; '))}</div>` : ''}
             <div class="ai-card-actions">
               <button class="ai-btn-sm" onclick="window.FixMateAI.sendSuggested('Haan, ye booking confirm kar do')">Booking Confirm Karein</button>
@@ -399,7 +390,7 @@
         const b = c.result.bookings[0];
         return `
           <div class="ai-card">
-            <div class="ai-card-badge">📋 Booking #${b.booking_id}</div>
+            <div class="ai-card-badge" style="color:var(--pri)">${icon('list', 13)} Booking #${b.booking_id}</div>
             <div class="ai-card-title">${escapeHtml(b.service)}</div>
             <div class="ai-card-row"><span>Status:</span> <b>${escapeHtml(b.status_text)}</b></div>
             <div class="ai-card-row"><span>Technician:</span> <b>${escapeHtml(b.assigned_worker)}</b></div>
@@ -410,7 +401,7 @@
       if (c.tool === 'reschedule_booking' && c.result.rescheduled) {
         return `
           <div class="ai-card success-booking">
-            <div class="ai-card-badge">🕒 Slot Rescheduled</div>
+            <div class="ai-card-badge">${icon('clock', 13)} Slot Rescheduled</div>
             <div class="ai-card-row"><span>Booking #${c.result.booking_id}:</span> <b>${escapeHtml(c.result.new_slot)}</b></div>
           </div>
         `;
@@ -418,7 +409,7 @@
       if (c.tool === 'request_booking_cancellation' && c.result.cancelled) {
         return `
           <div class="ai-card">
-            <div class="ai-card-badge" style="color:#DC2626">❌ Booking Cancelled</div>
+            <div class="ai-card-badge" style="color:var(--bad)">${icon('xCircle', 13)} Booking Cancelled</div>
             <div class="ai-card-note">${escapeHtml(c.result.message)}</div>
           </div>
         `;
@@ -427,7 +418,7 @@
         const iv = c.result.invoice;
         return `
           <div class="ai-card invoice-card">
-            <div class="ai-card-title">🧾 ${escapeHtml(iv.invoice_number)} (${escapeHtml(iv.payment_status)})</div>
+            <div class="ai-card-title">${icon('fileText', 14)} ${escapeHtml(iv.invoice_number)} (${escapeHtml(iv.payment_status)})</div>
             <div class="ai-card-row"><span>Base Labor:</span> <b>${escapeHtml(iv.base_labor)}</b></div>
             <div class="ai-card-row"><span>Spare Parts:</span> <b>${escapeHtml(iv.spare_parts)}</b></div>
             <div class="ai-card-row"><span>GST (18%):</span> <b>${escapeHtml(iv.gst_breakdown)}</b></div>
@@ -438,7 +429,7 @@
       if (c.tool === 'file_complaint' && c.result.ticket_created) {
         return `
           <div class="ai-card ticket-card">
-            <div class="ai-card-title">🎫 Support Ticket #${c.result.ticket_id}</div>
+            <div class="ai-card-title">${icon('alert', 14)} Support Ticket #${c.result.ticket_id}</div>
             <div class="ai-card-row"><span>Category:</span> <b>${escapeHtml(c.result.category)}</b></div>
             <div class="ai-card-note">${escapeHtml(c.result.message)}</div>
           </div>
@@ -447,7 +438,7 @@
       if (c.tool === 'find_nearby_technicians' && c.result.technicians) {
         return `
           <div class="ai-card tech-card">
-            <div class="ai-card-badge">🛡️ Police & ID Verified</div>
+            <div class="ai-card-badge" style="color:var(--pri)">${icon('shieldCheck', 13)} Police & ID Verified</div>
             <div class="ai-card-title">${escapeHtml(c.result.category)} Technicians (Dhanbad)</div>
             <div class="ai-card-note">${c.result.count > 0 ? `${c.result.count} verified technician(s) available in database.` : 'No technician currently online in this trade.'}</div>
           </div>
@@ -456,7 +447,7 @@
       if (c.tool === 'contact_human_support') {
         return `
           <div class="ai-card support-card">
-            <div class="ai-card-title">📞 FixMate Customer Desk</div>
+            <div class="ai-card-title">${icon('phone', 14)} FixMate Customer Desk</div>
             <div class="ai-card-row"><span>Helpline:</span> <b>${escapeHtml(c.result.support_phone || '+91 7209612650')}</b></div>
             <div class="ai-card-row"><span>Hours:</span> <b>${escapeHtml(c.result.hours || '8 AM - 9 PM')}</b></div>
             <div class="ai-card-note">${escapeHtml(c.result.note || '')}</div>
@@ -848,9 +839,9 @@
   function toggleMute() {
     AssistantState.isMuted = !AssistantState.isMuted;
     const btn = document.getElementById('ai-mute-btn');
-    const icon = document.getElementById('ai-mute-icon');
-    if (btn && icon) {
-      icon.textContent = AssistantState.isMuted ? '🔇' : '🔊';
+    const icEl = document.getElementById('ai-mute-icon');
+    if (btn && icEl) {
+      icEl.innerHTML = icon(AssistantState.isMuted ? 'volumeX' : 'volume2', 15);
       btn.classList.toggle('muted', AssistantState.isMuted);
     }
     if (AssistantState.localAudioStream) {
@@ -876,12 +867,12 @@
       stopListening();
       if (voiceView) voiceView.style.display = 'none';
       if (chatView) chatView.style.display = 'flex';
-      if (modeIcon) modeIcon.textContent = '🎙️';
+      if (modeIcon) modeIcon.innerHTML = icon('mic', 16);
       renderMessages();
     } else {
       if (chatView) chatView.style.display = 'none';
       if (voiceView) voiceView.style.display = 'flex';
-      if (modeIcon) modeIcon.textContent = '💬';
+      if (modeIcon) modeIcon.innerHTML = icon('messageSquare', 16);
       startListening();
     }
   }

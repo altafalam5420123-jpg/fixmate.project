@@ -112,6 +112,9 @@ const login = async (phone, extra) => {
   const s = await call('POST', '/api/auth/otp/send', { phone });
   const v = await call('POST', '/api/auth/otp/verify', { phone, otp: s.devOtp, ...extra });
   assert.equal(v.status, 200, v.message);
+  if (extra && extra.role === 'worker' && !extra.keepPending) {
+    testDb.prepare("UPDATE users SET verification_status = 'approved', id_verified = 1 WHERE phone = ?").run(phone);
+  }
   return v.token;
 };
 

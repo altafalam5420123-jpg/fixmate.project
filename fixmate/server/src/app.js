@@ -26,6 +26,18 @@ const ALLOW_DEMO_TOPUP = process.env.ALLOW_DEMO_TOPUP === '1';
 const sha = (salt, v) => crypto.createHash('sha256').update(salt + v).digest('hex');
 const otpHmac = (key, phone, value) => crypto.createHmac('sha256', key).update(`otp:${phone}:${value}`).digest('hex');
 const same = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const hashPassword = (pw) => {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(pw, salt, 64).toString('hex');
+  return `scrypt$${salt}$${derived}`;
+};
+const verifyPassword = (pw, stored) => {
+  if (!stored || typeof stored !== 'string') return false;
+  const parts = stored.split('$');
+  if (parts.length !== 3 || parts[0] !== 'scrypt') return false;
+  const derived = crypto.scryptSync(pw, parts[1], 64).toString('hex');
+  return same(derived, parts[2]);
+};
 class HttpError extends Error { constructor(code, msg) { super(msg); this.code = code; } }
 const bad = (code, msg) => { throw new HttpError(code, msg); };
 
@@ -193,18 +205,63 @@ function createApp(db = openDb()) {
     }
   };
 
-  const pub = (u) => ({
-    id: u.id,
-    name: u.name,
-    role: u.role,
-    skill: u.skill,
-    online: Boolean(u.online),
-    phone: u.phone.slice(0, 2) + 'XXXXXX' + u.phone.slice(-2),
-    experience_years: u.experience_years != null ? Number(u.experience_years) : 2,
-    id_document_url: u.id_document_url || null,
-    id_verified: u.id_verified != null ? Number(u.id_verified) : 1,
-    service_areas: u.service_areas || 'All Dhanbad'
-  });
+  const getProviderCategories = (u) => {
+    const cats = [];
+    if (u && u.service_categories) {
+      try {
+        const parsed = JSON.parse(u.service_categories);
+        if (Array.isArray(parsed)) parsed.forEach((c) => { if (CATEGORIES.includes(c) && !cats.includes(c)) cats.push(c); });
+      } catch {
+        String(u.service_categories).split(',').map((s) => s.trim()).forEach((c) => {
+          if (CATEGORIES.includes(c) && !cats.includes(c)) cats.push(c);
+        });
+      }
+    }
+    if (u && u.skill && !cats.includes(u.skill)) cats.unshift(u.skill);
+    return cats;
+  };
+
+  const getProviderVerificationStatus = (u) => {
+    if (!u) return 'pending';
+    if (u.verification_status && ['pending', 'approved', 'rejected', 'suspended'].includes(u.verification_status)) {
+      if (u.verification_status === 'approved' && Number(u.id_verified) === 0) return 'pending';
+      return u.verification_status;
+    }
+    return Number(u.id_verified) === 1 ? 'approved' : 'pending';
+  };
+
+  const isProviderApproved = (u) => Boolean(u && u.role === 'worker' && getProviderVerificationStatus(u) === 'approved' && Number(u.id_verified ?? 1) === 1);
+
+  const pub = (u) => {
+    let pricing = null;
+    if (u.pricing_json) {
+      try { pricing = JSON.parse(u.pricing_json); } catch { pricing = null; }
+    }
+    return {
+      id: u.id,
+      name: u.name,
+      role: u.role,
+      skill: u.skill,
+      service_categories: getProviderCategories(u),
+      online: Boolean(u.online),
+      phone: u.phone.slice(0, 2) + 'XXXXXX' + u.phone.slice(-2),
+      email: u.email || null,
+      language: u.language || 'en',
+      has_password: Boolean(u.password_hash),
+      bio: u.bio || null,
+      base_rate: u.base_rate != null ? Number(u.base_rate) : null,
+      pricing_json: pricing,
+      experience_years: u.experience_years != null ? Number(u.experience_years) : 2,
+      id_document_url: u.id_document_url || null,
+      id_verified: u.id_verified != null ? Number(u.id_verified) : 1,
+      verification_status: getProviderVerificationStatus(u),
+      verification_notes: u.verification_notes || null,
+      verification_doc_type: u.verification_doc_type || null,
+      verification_submitted_at: u.verification_submitted_at || null,
+      service_areas: u.service_areas || 'All Dhanbad',
+      created_at: u.created_at || null
+    };
+  };
 
   const credit = async (uid, label, amount, runner = db) => {
     await runner.query('UPDATE users SET wallet = wallet + $1 WHERE id = $2', [amount, uid]);
@@ -351,9 +408,18 @@ function createApp(db = openDb()) {
         return res.status(400).json({ success: false, needsProfile: true, message: 'Naam aur role chuno' });
       }
       if (role === 'worker' && !CATEGORIES.includes(skill)) bad(400, 'Worker ke liye sahi kaam chuno');
+      const isWorker = role === 'worker';
       const insRes = await db.query(
-        'INSERT INTO users (phone, name, role, skill, wallet) VALUES ($1, $2, $3, $4, 0) RETURNING id',
-        [row.phone, String(name).trim().slice(0, 60), role, role === 'worker' ? skill : null]
+        'INSERT INTO users (phone, name, role, skill, wallet, id_verified, verification_status, service_categories) VALUES ($1, $2, $3, $4, 0, $5, $6, $7) RETURNING id',
+        [
+          row.phone,
+          String(name).trim().slice(0, 60),
+          role,
+          isWorker ? skill : null,
+          isWorker ? 0 : 1,
+          isWorker ? 'pending' : 'approved',
+          isWorker ? JSON.stringify([skill]) : null
+        ]
       );
       const id = insRes.rows[0].id;
       if (role === 'customer') await credit(id, 'Welcome bonus', 150);
@@ -365,6 +431,67 @@ function createApp(db = openDb()) {
   }));
 
   app.get('/api/me', auth(), h((req, res) => ok(res, { user: pub(req.user), wallet: req.user.wallet })));
+
+  app.put('/api/me/profile', auth(), h(async (req, res) => {
+    const { name, email, language } = req.body || {};
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (name !== undefined) {
+      const cleanName = String(name).trim();
+      if (cleanName.length < 2 || cleanName.length > 60) bad(400, 'Name must be between 2 and 60 characters');
+      updates.push(`name = $${idx++}`);
+      values.push(cleanName);
+    }
+
+    if (email !== undefined) {
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      if (cleanEmail) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) || cleanEmail.length > 150) {
+          bad(400, 'Please enter a valid email address');
+        }
+        const existing = await db.queryOne('SELECT id FROM users WHERE LOWER(email) = $1 AND id != $2', [cleanEmail, req.user.id]);
+        if (existing) bad(409, 'This email is already associated with another account');
+        updates.push(`email = $${idx++}`);
+        values.push(cleanEmail);
+      } else {
+        updates.push(`email = $${idx++}`);
+        values.push(null);
+      }
+    }
+
+    if (language !== undefined) {
+      const cleanLang = String(language).trim().toLowerCase();
+      if (!['en', 'hi', 'hinglish'].includes(cleanLang)) {
+        bad(400, 'Language must be en, hi, or hinglish');
+      }
+      updates.push(`language = $${idx++}`);
+      values.push(cleanLang);
+    }
+
+    if (!updates.length) bad(400, 'No profile fields provided to update');
+    values.push(req.user.id);
+    await db.query(`UPDATE users SET ${updates.join(', ')} WHERE id = $${idx}`, values);
+    const updatedUser = await db.queryOne('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    ok(res, { user: pub(updatedUser), message: 'Profile updated successfully' });
+  }));
+
+  app.put('/api/me/password', auth(), h(async (req, res) => {
+    const { current_password, new_password } = req.body || {};
+    const nextPw = String(new_password || '');
+    if (nextPw.length < 8 || nextPw.length > 128) {
+      bad(400, 'New password must be between 8 and 128 characters');
+    }
+    if (req.user.password_hash) {
+      if (!current_password || !verifyPassword(String(current_password), req.user.password_hash)) {
+        bad(400, 'Current password is incorrect');
+      }
+    }
+    const hashed = hashPassword(nextPw);
+    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashed, req.user.id]);
+    ok(res, { has_password: true, message: req.user.password_hash ? 'Password updated successfully' : 'Password set successfully' });
+  }));
 
   app.post('/api/auth/logout-all', auth(), h(async (req, res) => {
     await db.query('UPDATE users SET token_version = token_version + 1 WHERE id = $1', [req.user.id]);
@@ -381,11 +508,23 @@ function createApp(db = openDb()) {
   app.get('/api/worker/stats', auth('worker'), h(async (req, res) => {
     const uid = req.user.id;
     const completedRes = await db.queryOne(
-      "SELECT COUNT(*) AS c FROM bookings WHERE worker_id = $1 AND status = 'completed'",
+      "SELECT COUNT(*) AS c FROM bookings WHERE worker_id = $1 AND status IN ('completed', 'closed')",
       [uid]
     );
     const activeRes = await db.queryOne(
       "SELECT COUNT(*) AS c FROM bookings WHERE worker_id = $1 AND status NOT IN ('completed', 'closed', 'cancelled')",
+      [uid]
+    );
+    const upcomingRes = await db.queryOne(
+      "SELECT COUNT(*) AS c FROM bookings WHERE worker_id = $1 AND status = 'assigned'",
+      [uid]
+    );
+    const inMotionRes = await db.queryOne(
+      "SELECT COUNT(*) AS c FROM bookings WHERE worker_id = $1 AND status IN ('on_the_way', 'inspecting', 'quoted', 'in_progress')",
+      [uid]
+    );
+    const cancelledRes = await db.queryOne(
+      "SELECT COUNT(*) AS c FROM bookings WHERE worker_id = $1 AND status = 'cancelled'",
       [uid]
     );
     const totalEarningsRes = await db.queryOne(
@@ -397,35 +536,103 @@ function createApp(db = openDb()) {
       [uid]
     );
 
+    let pendingRequests = 0;
+    if (isProviderApproved(req.user)) {
+      const openRows = await db.query(
+        "SELECT b.id, s.cat FROM bookings b JOIN services s ON s.id = b.service_id WHERE b.status = 'requested'"
+      );
+      const rejectedRows = await db.query('SELECT booking_id FROM provider_job_rejections WHERE worker_id = $1', [uid]);
+      const rejectedSet = new Set((rejectedRows.rows || []).map((r) => Number(r.booking_id)));
+      const cats = getProviderCategories(req.user);
+      pendingRequests = (openRows.rows || []).filter((r) => cats.includes(r.cat) && !rejectedSet.has(Number(r.id))).length;
+    }
+
     ok(res, {
       stats: {
+        pending_requests: pendingRequests,
+        upcoming_jobs: Number(upcomingRes ? upcomingRes.c : 0),
+        in_progress_jobs: Number(inMotionRes ? inMotionRes.c : 0),
         completed_jobs: Number(completedRes ? completedRes.c : 0),
         active_jobs: Number(activeRes ? activeRes.c : 0),
+        cancelled_jobs: Number(cancelledRes ? cancelledRes.c : 0),
         total_earnings: Number(totalEarningsRes ? totalEarningsRes.total : 0),
         avg_rating: ratingRes && ratingRes.avg_rating ? Number(ratingRes.avg_rating) : 4.8,
-        review_count: Number(ratingRes ? ratingRes.review_count : 0)
+        review_count: Number(ratingRes ? ratingRes.review_count : 0),
+        verification_status: getProviderVerificationStatus(req.user)
       }
     });
   }));
 
   app.put('/api/worker/profile', auth('worker'), h(async (req, res) => {
-    const { skill, experience_years, service_areas, id_document_url } = req.body;
+    const {
+      name, skill, service_categories, experience_years, service_areas,
+      id_document_url, bio, base_rate, pricing_json, language
+    } = req.body || {};
     const updates = [];
     const values = [];
     let idx = 1;
 
-    if (skill && CATEGORIES.includes(skill)) {
+    if (name !== undefined) {
+      const cleanName = String(name).trim();
+      if (cleanName.length < 2 || cleanName.length > 60) bad(400, 'Name must be between 2 and 60 characters');
+      updates.push(`name = $${idx++}`);
+      values.push(cleanName);
+    }
+
+    let chosenPrimarySkill = null;
+    if (Array.isArray(service_categories)) {
+      const validCats = [...new Set(service_categories.filter((c) => CATEGORIES.includes(c)))];
+      if (!validCats.length) bad(400, 'Kam se kam ek valid service category chunein');
+      updates.push(`service_categories = $${idx++}`);
+      values.push(JSON.stringify(validCats));
+      chosenPrimarySkill = (skill && validCats.includes(skill)) ? skill : validCats[0];
+      updates.push(`skill = $${idx++}`);
+      values.push(chosenPrimarySkill);
+    } else if (skill && CATEGORIES.includes(skill)) {
       updates.push(`skill = $${idx++}`);
       values.push(skill);
+      const existingCats = getProviderCategories(req.user);
+      if (!existingCats.includes(skill)) existingCats.unshift(skill);
+      updates.push(`service_categories = $${idx++}`);
+      values.push(JSON.stringify(existingCats));
     }
+
     if (experience_years !== undefined) {
       const exp = Math.max(0, Math.min(50, Number(experience_years) || 0));
       updates.push(`experience_years = $${idx++}`);
       values.push(exp);
     }
-    if (service_areas) {
+    if (service_areas !== undefined) {
       updates.push(`service_areas = $${idx++}`);
       values.push(String(service_areas).trim().slice(0, 255));
+    }
+    if (bio !== undefined) {
+      updates.push(`bio = $${idx++}`);
+      values.push(String(bio || '').trim().slice(0, 500) || null);
+    }
+    if (base_rate !== undefined) {
+      const rateNum = base_rate === null || base_rate === '' ? null : Math.max(0, Math.min(50000, Math.round(Number(base_rate) || 0)));
+      updates.push(`base_rate = $${idx++}`);
+      values.push(rateNum);
+    }
+    if (pricing_json !== undefined) {
+      let cleanPricing = {};
+      if (pricing_json && typeof pricing_json === 'object' && !Array.isArray(pricing_json)) {
+        Object.entries(pricing_json).forEach(([k, v]) => {
+          const num = Number(v);
+          if (CATEGORIES.includes(k) && Number.isFinite(num) && num >= 0 && num <= 50000) {
+            cleanPricing[k] = Math.round(num);
+          }
+        });
+      }
+      updates.push(`pricing_json = $${idx++}`);
+      values.push(JSON.stringify(cleanPricing));
+    }
+    if (language !== undefined) {
+      const cleanLang = String(language).trim().toLowerCase();
+      if (!['en', 'hi', 'hinglish'].includes(cleanLang)) bad(400, 'Language must be en, hi, or hinglish');
+      updates.push(`language = $${idx++}`);
+      values.push(cleanLang);
     }
     if (id_document_url) {
       updates.push(`id_document_url = $${idx++}`);
@@ -439,6 +646,143 @@ function createApp(db = openDb()) {
 
     const updatedUser = await db.queryOne('SELECT * FROM users WHERE id = $1', [req.user.id]);
     ok(res, { user: pub(updatedUser), message: 'Technician profile update ho gaya' });
+  }));
+
+  app.post('/api/worker/verification', auth('worker'), h(async (req, res) => {
+    const docType = String(req.body?.doc_type || '').trim().slice(0, 50);
+    const docUrl = String(req.body?.id_document_url || '').trim().slice(0, 100000);
+    const allowedDocTypes = ['Aadhaar Card', 'PAN Card', 'Driving License', 'Voter ID', 'Skill Certificate'];
+    if (!allowedDocTypes.includes(docType)) bad(400, 'Valid verification document type chunein');
+    if (!docUrl || docUrl.length < 10) bad(400, 'Verification document image ya reference upload karein');
+
+    const submittedAt = new Date().toISOString();
+    await db.query(
+      `UPDATE users
+       SET verification_doc_type = $1,
+           id_document_url = $2,
+           verification_status = 'pending',
+           id_verified = 0,
+           verification_notes = NULL,
+           verification_submitted_at = $3
+       WHERE id = $4`,
+      [docType, docUrl, submittedAt, req.user.id]
+    );
+    const updatedUser = await db.queryOne('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    ok(res, { user: pub(updatedUser), message: 'Verification document review ke liye submit ho gaya' });
+  }));
+
+  app.get('/api/worker/availability', auth('worker'), h(async (req, res) => {
+    const rows = await db.query(
+      'SELECT day_of_week, is_available, start_time, end_time, updated_at FROM provider_availability WHERE provider_id = $1 ORDER BY day_of_week ASC',
+      [req.user.id]
+    );
+    const map = new Map((rows.rows || []).map((r) => [Number(r.day_of_week), r]));
+    const days = [];
+    for (let d = 0; d < 7; d++) {
+      const existing = map.get(d);
+      days.push({
+        day_of_week: d,
+        is_available: existing ? Boolean(existing.is_available) : d !== 0,
+        start_time: existing?.start_time || '09:00',
+        end_time: existing?.end_time || '20:00'
+      });
+    }
+    ok(res, { availability: days });
+  }));
+
+  app.put('/api/worker/availability', auth('worker'), h(async (req, res) => {
+    const days = req.body?.days;
+    if (!Array.isArray(days) || !days.length) bad(400, 'Weekly availability schedule bhejein');
+    const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+    await db.transaction(async (tx) => {
+      for (const item of days) {
+        const dayIdx = Number(item.day_of_week);
+        if (!Number.isInteger(dayIdx) || dayIdx < 0 || dayIdx > 6) bad(400, 'Invalid day_of_week');
+        const avail = item.is_available ? 1 : 0;
+        const start = String(item.start_time || '09:00').trim();
+        const end = String(item.end_time || '20:00').trim();
+        if (!timeRegex.test(start) || !timeRegex.test(end)) bad(400, 'Time HH:MM format mein hona chahiye');
+        if (avail && start >= end) bad(400, 'End time start time se bada hona chahiye');
+
+        await tx.query(
+          `INSERT INTO provider_availability (provider_id, day_of_week, is_available, start_time, end_time, updated_at)
+           VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+           ON CONFLICT (provider_id, day_of_week) DO UPDATE SET
+             is_available = EXCLUDED.is_available,
+             start_time = EXCLUDED.start_time,
+             end_time = EXCLUDED.end_time,
+             updated_at = CURRENT_TIMESTAMP`,
+          [req.user.id, dayIdx, avail, start, end]
+        );
+      }
+    });
+
+    const refreshed = await db.query(
+      'SELECT day_of_week, is_available, start_time, end_time FROM provider_availability WHERE provider_id = $1 ORDER BY day_of_week ASC',
+      [req.user.id]
+    );
+    ok(res, {
+      availability: (refreshed.rows || []).map((r) => ({
+        day_of_week: Number(r.day_of_week),
+        is_available: Boolean(r.is_available),
+        start_time: r.start_time,
+        end_time: r.end_time
+      })),
+      message: 'Weekly availability save ho gayi'
+    });
+  }));
+
+  app.get('/api/worker/payments', auth('worker'), h(async (req, res) => {
+    const uid = req.user.id;
+    const txRes = await db.query(
+      'SELECT id, label, amount, created_at FROM wallet_tx WHERE user_id = $1 ORDER BY id DESC LIMIT 100',
+      [uid]
+    );
+    const jobsRes = await db.query(
+      `SELECT b.id AS booking_id, s.name AS service, s.cat, b.total, b.pay, b.paid, b.status,
+              b.scheduled_date, b.completed_at, b.created_at
+       FROM bookings b
+       JOIN services s ON s.id = b.service_id
+       WHERE b.worker_id = $1 AND b.status IN ('completed', 'closed')
+       ORDER BY b.id DESC LIMIT 100`,
+      [uid]
+    );
+
+    const jobPayouts = (jobsRes.rows || []).map((j) => {
+      const gross = Number(j.total || 0);
+      const commission = Math.floor(gross * COMMISSION);
+      const net = Math.max(0, gross - commission);
+      return {
+        booking_id: j.booking_id,
+        service: j.service,
+        category: j.cat,
+        gross_amount: gross,
+        platform_fee: commission,
+        net_payout: net,
+        pay_mode: j.pay,
+        paid: Boolean(j.paid),
+        status: j.status,
+        completed_at: j.completed_at || j.created_at
+      };
+    });
+
+    const totalGross = jobPayouts.filter((p) => p.paid).reduce((a, b) => a + b.gross_amount, 0);
+    const totalCommission = jobPayouts.filter((p) => p.paid).reduce((a, b) => a + b.platform_fee, 0);
+    const totalNet = jobPayouts.filter((p) => p.paid).reduce((a, b) => a + b.net_payout, 0);
+    const pendingPayout = jobPayouts.filter((p) => !p.paid).reduce((a, b) => a + b.net_payout, 0);
+
+    ok(res, {
+      summary: {
+        wallet_balance: Number(req.user.wallet || 0),
+        total_gross: totalGross,
+        total_commission: totalCommission,
+        total_net_earned: totalNet,
+        pending_payout: pendingPayout
+      },
+      job_payouts: jobPayouts,
+      wallet_transactions: txRes.rows || []
+    });
   }));
 
   app.get('/api/worker/reviews', auth('worker'), h(async (req, res) => {
@@ -459,17 +803,179 @@ function createApp(db = openDb()) {
     }
   }));
 
-  // ---------- Services ----------
+  // ---------- Services & Verified Providers ----------
   app.get('/api/services', h(async (req, res) => {
-    const { cat, q } = req.query;
+    const { cat, q, sort } = req.query;
+    const orderClause = sort === 'price_asc'
+      ? 'ORDER BY price ASC, id ASC'
+      : (sort === 'price_desc' ? 'ORDER BY price DESC, id ASC' : (sort === 'rating' ? 'ORDER BY rating DESC, id ASC' : 'ORDER BY id ASC'));
     const result = await db.query(
       `SELECT * FROM services
        WHERE ($1::text IS NULL OR cat = $1)
-         AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%')
-       ORDER BY id`,
+         AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%' OR cat ILIKE '%' || $2 || '%')
+       ${orderClause}`,
       [cat || null, q || null]
     );
     ok(res, { categories: CATEGORIES, services: result.rows });
+  }));
+
+  app.get('/api/services/:id', h(async (req, res) => {
+    const sId = Number(req.params.id);
+    if (!Number.isInteger(sId) || sId <= 0) bad(400, 'Invalid service ID');
+    const service = await db.queryOne('SELECT * FROM services WHERE id = $1', [sId]);
+    if (!service) bad(404, 'Service nahi mili');
+
+    const [provStats, reviewStats, reviewsRes] = await Promise.all([
+      db.queryOne(
+        `SELECT COUNT(*) AS total_verified,
+                SUM(CASE WHEN online = 1 THEN 1 ELSE 0 END) AS online_count
+         FROM users WHERE role = 'worker' AND COALESCE(id_verified, 1) = 1 AND skill = $1`,
+        [service.cat]
+      ),
+      db.queryOne(
+        `SELECT ROUND(AVG(r.rating)::numeric, 1) AS avg_rating, COUNT(*) AS review_count
+         FROM reviews r JOIN bookings b ON b.id = r.booking_id
+         WHERE b.service_id = $1`,
+        [sId]
+      ).catch(() => ({ avg_rating: null, review_count: 0 })),
+      db.query(
+        `SELECT r.id, r.rating, r.comment, r.created_at, u.name AS customer_name
+         FROM reviews r
+         JOIN bookings b ON b.id = r.booking_id
+         JOIN users u ON u.id = r.customer_id
+         WHERE b.service_id = $1
+         ORDER BY r.id DESC LIMIT 15`,
+        [sId]
+      ).catch(() => ({ rows: [] }))
+    ]);
+
+    ok(res, {
+      service: {
+        ...service,
+        duration_minutes: Number(service.duration_minutes || 60),
+        warranty_days: Number(service.warranty_days || 30),
+        avg_rating: reviewStats && reviewStats.avg_rating ? Number(reviewStats.avg_rating) : Number(service.rating || 4.8),
+        review_count: Number(reviewStats?.review_count || 0),
+        verified_providers: Number(provStats?.total_verified || 0),
+        online_providers: Number(provStats?.online_count || 0)
+      },
+      reviews: reviewsRes.rows
+    });
+  }));
+
+  app.get('/api/providers', h(async (req, res) => {
+    const { cat, q, area, min_rating, online, sort } = req.query;
+    const conditions = ["u.role = 'worker'", 'COALESCE(u.id_verified, 1) = 1'];
+    const params = [];
+    let idx = 1;
+
+    if (cat && cat !== 'All' && cat !== 'Sab') {
+      conditions.push(`u.skill = $${idx++}`);
+      params.push(String(cat).trim());
+    }
+    if (online === '1' || online === 'true') {
+      conditions.push('u.online = 1');
+    }
+    if (q && String(q).trim()) {
+      conditions.push(`(u.name ILIKE $${idx} OR u.skill ILIKE $${idx} OR COALESCE(u.service_areas, '') ILIKE $${idx})`);
+      params.push(`%${String(q).trim()}%`);
+      idx++;
+    }
+    if (area && String(area).trim()) {
+      conditions.push(`COALESCE(u.service_areas, '') ILIKE $${idx++}`);
+      params.push(`%${String(area).trim()}%`);
+    }
+
+    const rowsRes = await db.query(
+      `SELECT u.id, u.name, u.skill, u.online, u.experience_years, u.service_areas, u.bio, u.base_rate,
+              COALESCE(u.id_verified, 1) AS id_verified
+       FROM users u
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY u.online DESC, u.id ASC
+       LIMIT 100`,
+      params
+    );
+
+    const providers = [];
+    for (const w of rowsRes.rows) {
+      const [revRes, compRes] = await Promise.all([
+        db.queryOne('SELECT ROUND(AVG(rating)::numeric, 1) AS avg_rating, COUNT(*) AS review_count FROM reviews WHERE worker_id = $1', [w.id])
+          .catch(() => ({ avg_rating: null, review_count: 0 })),
+        db.queryOne("SELECT COUNT(*) AS c FROM bookings WHERE worker_id = $1 AND status = 'completed'", [w.id])
+          .catch(() => ({ c: 0 }))
+      ]);
+      const avgRating = revRes && revRes.avg_rating ? Number(revRes.avg_rating) : 4.8;
+      if (min_rating && Number(min_rating) > 0 && avgRating < Number(min_rating)) continue;
+      providers.push({
+        id: w.id,
+        name: w.name,
+        skill: w.skill,
+        online: Boolean(w.online),
+        verified: Boolean(w.id_verified),
+        experience_years: w.experience_years != null ? Number(w.experience_years) : 2,
+        service_areas: w.service_areas || 'All Dhanbad',
+        bio: w.bio || `Verified ${w.skill} specialist serving Dhanbad with transparent quotes and 30-day service guarantee.`,
+        base_rate: w.base_rate != null ? Number(w.base_rate) : null,
+        avg_rating: avgRating,
+        review_count: Number(revRes?.review_count || 0),
+        completed_jobs: Number(compRes?.c || 0)
+      });
+    }
+
+    if (sort === 'exp') providers.sort((a, b) => b.experience_years - a.experience_years);
+    else if (sort === 'jobs') providers.sort((a, b) => b.completed_jobs - a.completed_jobs);
+    else providers.sort((a, b) => (Number(b.online) - Number(a.online)) || (b.avg_rating - a.avg_rating));
+
+    ok(res, { providers });
+  }));
+
+  app.get('/api/providers/:id', h(async (req, res) => {
+    const pId = Number(req.params.id);
+    if (!Number.isInteger(pId) || pId <= 0) bad(400, 'Invalid provider ID');
+    const w = await db.queryOne(
+      `SELECT id, name, skill, online, experience_years, service_areas, bio, base_rate, COALESCE(id_verified, 1) AS id_verified
+       FROM users WHERE id = $1 AND role = 'worker' AND COALESCE(id_verified, 1) = 1`,
+      [pId]
+    );
+    if (!w) bad(404, 'Verified provider nahi mila');
+
+    const [revStats, compRes, reviewsRes, svcRes] = await Promise.all([
+      db.queryOne('SELECT ROUND(AVG(rating)::numeric, 1) AS avg_rating, COUNT(*) AS review_count FROM reviews WHERE worker_id = $1', [w.id])
+        .catch(() => ({ avg_rating: null, review_count: 0 })),
+      db.queryOne("SELECT COUNT(*) AS c FROM bookings WHERE worker_id = $1 AND status = 'completed'", [w.id])
+        .catch(() => ({ c: 0 })),
+      db.query(
+        `SELECT r.id, r.rating, r.comment, r.created_at, u.name AS customer_name, s.name AS service_name
+         FROM reviews r
+         JOIN bookings b ON b.id = r.booking_id
+         JOIN services s ON s.id = b.service_id
+         JOIN users u ON u.id = r.customer_id
+         WHERE r.worker_id = $1
+         ORDER BY r.id DESC LIMIT 20`,
+        [w.id]
+      ).catch(() => ({ rows: [] })),
+      db.query('SELECT id, cat, name, price, rating FROM services WHERE cat = $1 ORDER BY id ASC', [w.skill])
+        .catch(() => ({ rows: [] }))
+    ]);
+
+    ok(res, {
+      provider: {
+        id: w.id,
+        name: w.name,
+        skill: w.skill,
+        online: Boolean(w.online),
+        verified: Boolean(w.id_verified),
+        experience_years: w.experience_years != null ? Number(w.experience_years) : 2,
+        service_areas: w.service_areas || 'All Dhanbad',
+        bio: w.bio || `Verified ${w.skill} specialist serving Dhanbad with transparent quotes and 30-day service guarantee.`,
+        base_rate: w.base_rate != null ? Number(w.base_rate) : null,
+        avg_rating: revStats && revStats.avg_rating ? Number(revStats.avg_rating) : 4.8,
+        review_count: Number(revStats?.review_count || 0),
+        completed_jobs: Number(compRes?.c || 0)
+      },
+      reviews: reviewsRes.rows,
+      services: svcRes.rows
+    });
   }));
 
   // ---------- Smart Service Finder (Section 4) ----------
@@ -510,7 +1016,7 @@ function createApp(db = openDb()) {
   }));
 
   app.post('/api/addresses', auth('customer'), h(async (req, res) => {
-    const { label, address_line, landmark, city, pincode, is_default } = req.body;
+    const { label, address_line, landmark, city, pincode, is_default, lat, lng } = req.body;
     if (!String(address_line || '').trim()) bad(400, 'Address line required hai');
     const lbl = String(label || 'Home').trim().slice(0, 50);
     const line = String(address_line).trim().slice(0, 300);
@@ -518,15 +1024,17 @@ function createApp(db = openDb()) {
     const cty = String(city || 'Dhanbad').trim().slice(0, 100);
     const pin = String(pincode || '826001').trim().slice(0, 10);
     const def = is_default ? 1 : 0;
+    const nLat = lat != null && Number.isFinite(Number(lat)) && Number(lat) >= -90 && Number(lat) <= 90 ? Number(lat) : null;
+    const nLng = lng != null && Number.isFinite(Number(lng)) && Number(lng) >= -180 && Number(lng) <= 180 ? Number(lng) : null;
 
     await db.transaction(async (tx) => {
       if (def === 1) {
         await tx.query('UPDATE addresses SET is_default = 0 WHERE user_id = $1', [req.user.id]);
       }
       const ins = await tx.query(
-        `INSERT INTO addresses (user_id, label, address_line, landmark, city, pincode, is_default)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-        [req.user.id, lbl, line, lmark, cty, pin, def]
+        `INSERT INTO addresses (user_id, label, address_line, landmark, city, pincode, lat, lng, is_default)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+        [req.user.id, lbl, line, lmark, cty, pin, nLat, nLng, def]
       );
       const newAddress = await tx.queryOne('SELECT * FROM addresses WHERE id = $1', [ins.rows[0].id]);
       ok(res, { address: newAddress, message: 'Address save ho gaya' }, 201);
@@ -636,12 +1144,17 @@ function createApp(db = openDb()) {
       worker_lat, worker_lng, eta_minutes, tracking_active, location_updated_at,
       ...rest
     } = b;
-    const address = u.role === 'worker' && b.status === 'requested'
-      ? 'Address accept karne ke baad milega'
-      : b.address;
+    const workerAuthorizedCustomer = u.role !== 'worker' || (b.worker_id === u.id && !['requested', 'cancelled'].includes(b.status));
+    const address = workerAuthorizedCustomer
+      ? b.address
+      : 'Address accept karne ke baad milega';
+    const formattedAddress = workerAuthorizedCustomer ? b.formatted_address : null;
+    const customerName = workerAuthorizedCustomer ? b.customer_name : 'FixMate Customer';
+    const customerLat = workerAuthorizedCustomer ? b.customer_lat : null;
+    const customerLng = workerAuthorizedCustomer ? b.customer_lng : null;
     const contactPhone = u.role === 'customer'
       ? (b.worker_id && !['requested', 'cancelled'].includes(b.status) ? worker_phone : null)
-      : (b.worker_id === u.id && !['requested', 'cancelled'].includes(b.status) ? customer_phone : null);
+      : (workerAuthorizedCustomer ? customer_phone : null);
 
     // Strictly expose technician live coordinates ONLY during an active tracking job
     const canSeeLocation = ACTIVE_TRACKING_STATUSES.includes(b.status) &&
@@ -667,6 +1180,10 @@ function createApp(db = openDb()) {
     return {
       ...rest,
       ...trackingFields,
+      customer_name: customerName,
+      customer_lat: customerLat,
+      customer_lng: customerLng,
+      formatted_address: formattedAddress,
       address,
       contact_phone: contactPhone,
       label: LABEL[b.status] || b.status,
@@ -734,13 +1251,32 @@ function createApp(db = openDb()) {
 
   app.post('/api/bookings', auth('customer'), h(async (req, res) => {
     const {
-      serviceId, slot, address, pay, issue_desc, photo_url,
-      coupon_code, discount_amount, is_emergency, customer_lat, customer_lng,
-      pincode, family_member_name, amc_subscription_id
+      serviceId, slot, address, formatted_address, pay, issue_desc, instructions, photo_url,
+      coupon_code, is_emergency, customer_lat, customer_lng,
+      pincode, family_member_name, amc_subscription_id,
+      scheduled_date, scheduled_time, preferred_worker_id
     } = req.body;
     const s = (await db.queryOne('SELECT id, cat, name, price FROM services WHERE id = $1', [+serviceId])) || bad(400, 'Service nahi mili');
-    if (!String(slot || '').trim() || !String(address || '').trim()) bad(400, 'Slot aur address zaruri hain');
+
+    const cleanDate = scheduled_date ? String(scheduled_date).trim().slice(0, 20) : null;
+    const cleanTime = scheduled_time ? String(scheduled_time).trim().slice(0, 40) : null;
+    const resolvedSlot = String(slot || (cleanDate && cleanTime ? `${cleanDate} (${cleanTime})` : '')).trim();
+    const resolvedAddress = String(address || formatted_address || '').trim();
+    const resolvedFormattedAddr = formatted_address ? String(formatted_address).trim().slice(0, 300) : resolvedAddress.slice(0, 300);
+
+    if (!resolvedSlot || !resolvedAddress) bad(400, 'Slot aur address zaruri hain');
     if (!['wallet', 'cash', 'razorpay'].includes(pay)) bad(400, 'Payment wallet, cash ya online hona chahiye');
+
+    let validPreferredWorkerId = null;
+    if (preferred_worker_id) {
+      const pw = await db.queryOne(
+        "SELECT id, skill, COALESCE(id_verified, 1) AS id_verified FROM users WHERE id = $1 AND role = 'worker'",
+        [Number(preferred_worker_id)]
+      );
+      if (!pw || !pw.id_verified) bad(400, 'Selected provider verified nahi hai');
+      if (pw.skill !== s.cat) bad(400, `Selected provider ${s.cat} category mein nahi hai`);
+      validPreferredWorkerId = pw.id;
+    }
 
     // Optional Pincode Serviceability check (Section 21)
     if (pincode && String(pincode).trim()) {
@@ -794,11 +1330,10 @@ function createApp(db = openDb()) {
           validDiscount = Math.min(cpn.discount_value, s.price);
         }
       }
-    } else if (Number(discount_amount) > 0) {
-      validDiscount = Number(discount_amount);
     }
 
-    const desc = issue_desc ? String(issue_desc).trim().slice(0, 500) : null;
+    const desc = (issue_desc || instructions) ? String(issue_desc || instructions).trim().slice(0, 500) : null;
+    const cleanInstructions = instructions ? String(instructions).trim().slice(0, 500) : desc;
     const photo = photo_url ? String(photo_url).trim().slice(0, 100000) : null;
     const famName = family_member_name ? String(family_member_name).trim().slice(0, 100) : null;
 
@@ -830,9 +1365,9 @@ function createApp(db = openDb()) {
         if (upd.rowCount !== 1) bad(409, 'AMC visit limit poori ho chuki hai');
       }
       const ins = await tx.query(
-        `INSERT INTO bookings (customer_id, service_id, slot, address, pay, start_code, issue_desc, photo_url, coupon_code, discount_amount, is_emergency, customer_lat, customer_lng, emergency_fee, family_member_name, amc_subscription_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
-        [req.user.id, s.id, String(slot).slice(0, 60), String(address).slice(0, 200), pay, code, desc, photo, validCouponCode, validDiscount, emergency, cLat, cLng, emergencyFee, famName, validAmcSubId]
+        `INSERT INTO bookings (customer_id, preferred_worker_id, service_id, slot, scheduled_date, scheduled_time, address, formatted_address, pay, start_code, issue_desc, instructions, photo_url, coupon_code, discount_amount, is_emergency, customer_lat, customer_lng, emergency_fee, family_member_name, amc_subscription_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING id`,
+        [req.user.id, validPreferredWorkerId, s.id, resolvedSlot.slice(0, 60), cleanDate, cleanTime, resolvedAddress.slice(0, 200), resolvedFormattedAddr, pay, code, desc, cleanInstructions, photo, validCouponCode, validDiscount, emergency, cLat, cLng, emergencyFee, famName, validAmcSubId]
       );
       return ins.rows[0].id;
     });
@@ -850,10 +1385,75 @@ function createApp(db = openDb()) {
 
   app.get('/api/bookings', auth(), h(async (req, res) => {
     const u = req.user;
-    const result = u.role === 'customer'
-      ? await db.query(`${SELECT} WHERE b.customer_id = $1 ORDER BY b.id DESC`, [u.id])
-      : await db.query(`${SELECT} WHERE b.worker_id = $1 OR (b.status = 'requested' AND s.cat = $2) ORDER BY b.id DESC`, [u.id, u.skill]);
-    ok(res, { bookings: result.rows.map((b) => view(b, u)) });
+    if (u.role === 'customer') {
+      const result = await db.query(`${SELECT} WHERE b.customer_id = $1 ORDER BY b.id DESC`, [u.id]);
+      return ok(res, { bookings: result.rows.map((b) => view(b, u)) });
+    }
+    if (!isProviderApproved(u)) {
+      const result = await db.query(`${SELECT} WHERE b.worker_id = $1 ORDER BY b.id DESC`, [u.id]);
+      return ok(res, { bookings: result.rows.map((b) => view(b, u)) });
+    }
+    const cats = getProviderCategories(u);
+    const rejRes = await db.query('SELECT booking_id FROM provider_job_rejections WHERE worker_id = $1', [u.id]);
+    const rejectedIds = new Set((rejRes.rows || []).map((r) => Number(r.booking_id)));
+    const result = await db.query(`${SELECT} WHERE b.worker_id = $1 OR b.status = 'requested' ORDER BY b.id DESC`, [u.id]);
+    const visible = (result.rows || []).filter((b) =>
+      b.worker_id === u.id || (b.status === 'requested' && cats.includes(b.cat) && !rejectedIds.has(Number(b.id)))
+    );
+    ok(res, { bookings: visible.map((b) => view(b, u)) });
+  }));
+
+  // Available Time Slots for Date Selection (placed BEFORE /api/bookings/:id)
+  app.get('/api/bookings/available-slots', h(async (req, res) => {
+    const nowIst = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+    const todayStr = nowIst.toISOString().slice(0, 10);
+    const reqDate = String(req.query.date || todayStr).trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(reqDate)) bad(400, 'Date YYYY-MM-DD format mein honi chahiye');
+    const isToday = reqDate === todayStr;
+    const isPastDate = reqDate < todayStr;
+    const currentHour = nowIst.getUTCHours();
+
+    const baseWindows = [
+      { id: 'express', label: 'Express (Within 60 min)', startHour: 0, endHour: 22, onlyToday: true },
+      { id: '09_11', label: '09:00 AM - 11:00 AM', startHour: 9, endHour: 11 },
+      { id: '11_13', label: '11:00 AM - 01:00 PM', startHour: 11, endHour: 13 },
+      { id: '14_16', label: '02:00 PM - 04:00 PM', startHour: 14, endHour: 16 },
+      { id: '16_18', label: '04:00 PM - 06:00 PM', startHour: 16, endHour: 18 },
+      { id: '18_20', label: '06:00 PM - 08:00 PM', startHour: 18, endHour: 20 }
+    ];
+
+    let bookedTimes = new Set();
+    const providerId = req.query.provider_id ? Number(req.query.provider_id) : null;
+    if (providerId) {
+      const existing = await db.query(
+        `SELECT scheduled_time, slot FROM bookings
+         WHERE (worker_id = $1 OR preferred_worker_id = $1)
+           AND scheduled_date = $2
+           AND status NOT IN ('completed', 'closed', 'cancelled')`,
+        [providerId, reqDate]
+      );
+      existing.rows.forEach((r) => {
+        if (r.scheduled_time) bookedTimes.add(r.scheduled_time);
+      });
+    }
+
+    const slots = baseWindows
+      .filter((w) => !w.onlyToday || isToday)
+      .map((w) => {
+        let available = !isPastDate;
+        let reason = isPastDate ? 'Past date' : null;
+        if (available && isToday && !w.onlyToday && currentHour >= w.endHour - 1) {
+          available = false;
+          reason = 'Time window passed';
+        }
+        if (available && bookedTimes.has(w.label)) {
+          available = false;
+          reason = 'Provider booked in this slot';
+        }
+        return { id: w.id, label: w.label, available, reason };
+      });
+
+    ok(res, { date: reqDate, slots });
   }));
 
   // Service History & Warranty Eligibility (Section 10 — placed BEFORE /api/bookings/:id)
@@ -923,7 +1523,8 @@ function createApp(db = openDb()) {
 
   app.get('/api/bookings/:id', auth(), h(async (req, res) => {
     const b = await load(req.params.id);
-    if (!(b.customer_id === req.user.id || b.worker_id === req.user.id || (req.user.role === 'worker' && b.status === 'requested' && b.cat === req.user.skill)))
+    const canWorkerViewOpen = req.user.role === 'worker' && b.status === 'requested' && isProviderApproved(req.user) && getProviderCategories(req.user).includes(b.cat);
+    if (!(b.customer_id === req.user.id || b.worker_id === req.user.id || canWorkerViewOpen))
       bad(403, 'Ye booking tumhari nahi hai');
     ok(res, { booking: view(b, req.user) });
   }));
@@ -936,11 +1537,34 @@ function createApp(db = openDb()) {
     ok(res, { booking: view(await load(b.id), req.user) });
   }));
 
-  step('accept', 'worker', 'requested', 'assigned', (b, req) => {
+  step('accept', 'worker', 'requested', 'assigned', async (b, req) => {
+    if (!isProviderApproved(req.user)) bad(403, 'Aapka provider verification abhi pending/inactive hai. Approval ke baad hi jobs accept kar sakte hain.');
     if (!req.user.online) bad(409, 'Pehle online aao');
-    if (b.cat !== req.user.skill) bad(403, 'Ye kaam tumhare skill ka nahi hai');
+    if (!getProviderCategories(req.user).includes(b.cat)) bad(403, 'Ye kaam tumhare skill ka nahi hai');
+    if (b.scheduled_date && b.scheduled_time) {
+      const conflict = await db.queryOne(
+        `SELECT id FROM bookings
+         WHERE worker_id = $1 AND id != $2 AND scheduled_date = $3 AND scheduled_time = $4
+           AND status NOT IN ('completed', 'closed', 'cancelled')`,
+        [req.user.id, b.id, b.scheduled_date, b.scheduled_time]
+      );
+      if (conflict) bad(409, `Is time slot (${b.scheduled_time}) mein aapke paas pehle se ek booking hai`);
+    }
     return { setFields: { worker_id: req.user.id } };
   });
+
+  app.post('/api/bookings/:id/reject-job', auth('worker'), h(async (req, res) => {
+    const b = await load(req.params.id);
+    if (b.status !== 'requested') bad(409, 'Sirf open requests ko reject kiya ja sakta hai');
+    const reason = req.body?.reason ? String(req.body.reason).trim().slice(0, 250) : 'Declined by provider';
+    await db.query(
+      `INSERT INTO provider_job_rejections (booking_id, worker_id, reason)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (booking_id, worker_id) DO NOTHING`,
+      [b.id, req.user.id, reason]
+    );
+    ok(res, { message: 'Request aapki queue se hata di gayi hai' });
+  }));
 
   step('on-the-way', 'worker', 'assigned', 'on_the_way');
 
@@ -982,7 +1606,14 @@ function createApp(db = openDb()) {
     if (!['requested', 'assigned'].includes(b.status)) {
       bad(409, 'Kaam shuru hone ya raste me hone ke baad cancel nahi ho sakta');
     }
-    await move(b, b.status, 'cancelled', {}, req.user ? req.user.id : null);
+    const reason = req.body && req.body.reason ? String(req.body.reason).trim().slice(0, 300) : 'Cancelled by customer';
+    await move(
+      b,
+      b.status,
+      'cancelled',
+      { cancellation_reason: reason, cancelled_at: new Date().toISOString() },
+      req.user ? req.user.id : null
+    );
     ok(res, { booking: view(await load(b.id), req.user), message: 'Booking cancel kar di gayi' });
   }));
 
@@ -1546,29 +2177,29 @@ function createApp(db = openDb()) {
 <title>FixMate Invoice ${inv.invoice_number}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #0F2537; background: #f8fafc; padding: 24px 16px; }
-  .invoice-box { max-width: 720px; margin: 0 auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 32px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #006A60; padding-bottom: 20px; margin-bottom: 24px; }
-  .logo { font-size: 26px; font-weight: 800; color: #006A60; letter-spacing: -0.5px; }
-  .logo span { color: #FA6A00; }
+  body { font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #172B4D; background: #F4F8FC; padding: 24px 16px; }
+  .invoice-box { max-width: 720px; margin: 0 auto; background: #fff; border: 1px solid #DCE7F3; border-radius: 18px; padding: 32px; box-shadow: 0 10px 28px rgba(22, 119, 232, 0.08); }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1677E8; padding-bottom: 20px; margin-bottom: 24px; }
+  .logo { font-size: 26px; font-weight: 800; color: #172B4D; letter-spacing: -0.5px; }
+  .logo span { color: #1677E8; }
   .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
-  .badge.paid { background: #E6F4EA; color: #1E824C; }
+  .badge.paid { background: #DCFCE7; color: #16A34A; }
   .badge.unpaid { background: #FEF3C7; color: #D97706; }
   .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; font-size: 13.5px; line-height: 1.5; }
-  .details-col b { color: #006A60; display: block; margin-bottom: 4px; font-size: 14px; }
+  .details-col b { color: #1677E8; display: block; margin-bottom: 4px; font-size: 14px; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13.5px; }
-  th { background: #F0F4F8; color: #0F2537; text-align: left; padding: 10px 12px; font-weight: 700; border-top: 1px solid #CBD5E1; border-bottom: 1px solid #CBD5E1; }
-  td { padding: 12px; border-bottom: 1px solid #E2EBF0; }
+  th { background: #EAF2FB; color: #172B4D; text-align: left; padding: 10px 12px; font-weight: 700; border-top: 1px solid #DCE7F3; border-bottom: 1px solid #DCE7F3; }
+  td { padding: 12px; border-bottom: 1px solid #DCE7F3; }
   .text-right { text-align: right; }
   .summary { margin-left: auto; width: 280px; margin-bottom: 24px; font-size: 13.5px; }
   .summary-row { display: flex; justify-content: space-between; padding: 6px 0; }
-  .summary-row.total { border-top: 2px solid #0F2537; font-size: 17px; font-weight: 800; color: #006A60; padding-top: 10px; margin-top: 6px; }
-  .warranty-box { background: #E2EFEF; border: 1.5px solid #006A60; border-radius: 12px; padding: 14px 18px; margin-bottom: 24px; }
-  .warranty-box b { color: #004D40; font-size: 14px; display: block; margin-bottom: 4px; }
-  .warranty-box p { font-size: 12.5px; color: #334E68; }
-  .footer { text-align: center; border-top: 1px solid #E2EBF0; padding-top: 18px; font-size: 12px; color: #627D98; }
-  .print-btn { display: inline-flex; align-items: gap: 8px; background: #006A60; color: #fff; font-weight: 700; padding: 10px 20px; border-radius: 10px; text-decoration: none; border: none; cursor: pointer; margin-bottom: 20px; font-size: 14px; }
-  .print-btn:hover { background: #004D40; }
+  .summary-row.total { border-top: 2px solid #172B4D; font-size: 17px; font-weight: 800; color: #1677E8; padding-top: 10px; margin-top: 6px; }
+  .warranty-box { background: #EAF2FB; border: 1.5px solid #1677E8; border-radius: 12px; padding: 14px 18px; margin-bottom: 24px; }
+  .warranty-box b { color: #0F56B3; font-size: 14px; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .warranty-box p { font-size: 12.5px; color: #172B4D; }
+  .footer { text-align: center; border-top: 1px solid #DCE7F3; padding-top: 18px; font-size: 12px; color: #5E6C84; }
+  .print-btn { display: inline-flex; align-items: center; gap: 8px; background: #1677E8; color: #fff; font-weight: 700; padding: 10px 20px; border-radius: 12px; text-decoration: none; border: none; cursor: pointer; margin-bottom: 20px; font-size: 14px; }
+  .print-btn:hover { background: #0F56B3; }
   @media print {
     body { background: #fff; padding: 0; }
     .invoice-box { border: none; box-shadow: none; padding: 0; }
@@ -1578,19 +2209,22 @@ function createApp(db = openDb()) {
 </head>
 <body>
   <div style="max-width:720px; margin:0 auto;" class="no-print">
-    <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF Receipt</button>
+    <button class="print-btn" onclick="window.print()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect width="12" height="8" x="6" y="14" rx="1"/></svg>
+      Print / Save as PDF Receipt
+    </button>
   </div>
   <div class="invoice-box">
     <div class="header">
       <div>
         <div class="logo">Fix<span>Mate</span></div>
-        <div style="font-size:12px; color:#627D98; margin-top:4px;">GSTIN: 20AAACF1234F1Z5 · Dhanbad, Jharkhand</div>
-        <div style="font-size:12px; color:#627D98;">support@fixmate.in · Helpline: +91 9999999999</div>
+        <div style="font-size:12px; color:#5E6C84; margin-top:4px;">GSTIN: 20AAACF1234F1Z5 · Dhanbad, Jharkhand</div>
+        <div style="font-size:12px; color:#5E6C84;">support@fixmate.in · Helpline: +91 9999999999</div>
       </div>
       <div style="text-align:right;">
-        <h2 style="font-size:20px; font-weight:800; color:#0F2537; margin-bottom:4px;">TAX INVOICE</h2>
-        <div style="font-size:14px; font-weight:700; color:#006A60;">${inv.invoice_number}</div>
-        <div style="font-size:12px; color:#627D98; margin:4px 0 8px;">Date: ${inv.date}</div>
+        <h2 style="font-size:20px; font-weight:800; color:#172B4D; margin-bottom:4px;">TAX INVOICE</h2>
+        <div style="font-size:14px; font-weight:700; color:#1677E8;">${inv.invoice_number}</div>
+        <div style="font-size:12px; color:#5E6C84; margin:4px 0 8px;">Date: ${inv.date}</div>
         <span class="badge ${inv.paid ? 'paid' : 'unpaid'}">${inv.paid ? 'PAID' : 'PAYMENT PENDING'}</span>
       </div>
     </div>
@@ -1606,7 +2240,7 @@ function createApp(db = openDb()) {
         <b>Service & Technician Details:</b>
         <div>Service: ${inv.service.name} (${inv.service.category})</div>
         ${inv.technician ? `
-          <div>Technician: ${inv.technician.name} ${inv.technician.verified ? '🛡️ (Verified Pro)' : ''}</div>
+          <div>Technician: ${inv.technician.name} ${inv.technician.verified ? '(Verified Pro)' : ''}</div>
           <div>Contact: ${inv.technician.phone}</div>
         ` : '<div>Technician: FixMate Team</div>'}
         <div>Payment Mode: <span style="text-transform:capitalize;">${inv.payment_method}</span></div>
@@ -1629,7 +2263,7 @@ function createApp(db = openDb()) {
             <td>${idx + 1}</td>
             <td>
               <b>${it.title}</b>
-              ${it.note ? `<div style="font-size:11px; color:#1E824C;">${it.note}</div>` : ''}
+              ${it.note ? `<div style="font-size:11px; color:#16A34A;">${it.note}</div>` : ''}
             </td>
             <td class="text-right">${it.qty}</td>
             <td class="text-right">${it.rate < 0 ? '-' : ''}₹${Math.abs(it.rate)}</td>
@@ -1645,12 +2279,12 @@ function createApp(db = openDb()) {
         <span>₹${inv.subtotal}</span>
       </div>
       ${inv.discount ? `
-        <div class="summary-row" style="color:#1E824C; font-weight:700;">
+        <div class="summary-row" style="color:#16A34A; font-weight:700;">
           <span>Promo Discount</span>
           <span>-₹${inv.discount}</span>
         </div>
       ` : ''}
-      <div class="summary-row" style="font-size:12px; color:#627D98;">
+      <div class="summary-row" style="font-size:12px; color:#5E6C84;">
         <span>Includes GST 18% (CGST 9% + SGST 9%)</span>
         <span>₹${inv.gst.total_tax}</span>
       </div>
@@ -1662,9 +2296,12 @@ function createApp(db = openDb()) {
 
     ${inv.warranty ? `
       <div class="warranty-box">
-        <b>🛡️ 30-Day FixMate Guarantee Certificate</b>
+        <b>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+          30-Day FixMate Guarantee Certificate
+        </b>
         <p>${inv.warranty.terms}</p>
-        <div style="font-size:12px; margin-top:6px; font-weight:700; color:#006A60;">Warranty Valid Till: ${inv.warranty.valid_until}</div>
+        <div style="font-size:12px; margin-top:6px; font-weight:700; color:#1677E8;">Warranty Valid Till: ${inv.warranty.valid_until}</div>
       </div>
     ` : ''}
 
@@ -1680,11 +2317,52 @@ function createApp(db = openDb()) {
     res.send(html);
   }));
 
-  // ---------- Wallet ----------
+  // ---------- Wallet & Customer Payment History ----------
   app.get('/api/wallet', auth(), h(async (req, res) => {
     const u = await db.queryOne('SELECT wallet FROM users WHERE id = $1', [req.user.id]);
     const txs = await db.query('SELECT label, amount, created_at FROM wallet_tx WHERE user_id = $1 ORDER BY id DESC LIMIT 20', [req.user.id]);
     ok(res, { balance: u.wallet, transactions: txs.rows });
+  }));
+
+  app.get('/api/payments/my', auth('customer'), h(async (req, res) => {
+    const [bookingsRes, walletRes] = await Promise.all([
+      db.query(
+        `SELECT b.id AS booking_id, s.name AS service_name, s.cat AS category, s.price AS base_price,
+                b.parts, b.discount_amount, b.emergency_fee, b.total, b.pay AS payment_method,
+                b.paid, b.status AS booking_status, b.created_at, b.completed_at,
+                po.provider_order_id, po.provider_payment_id, po.status AS gateway_status
+         FROM bookings b
+         JOIN services s ON s.id = b.service_id
+         LEFT JOIN payment_orders po ON po.id = (
+           SELECT MAX(id) FROM payment_orders p2 WHERE p2.booking_id = b.id
+         )
+         WHERE b.customer_id = $1
+         ORDER BY b.id DESC LIMIT 50`,
+        [req.user.id]
+      ),
+      db.query(
+        'SELECT id, label, amount, created_at FROM wallet_tx WHERE user_id = $1 ORDER BY id DESC LIMIT 30',
+        [req.user.id]
+      )
+    ]);
+
+    ok(res, {
+      payments: bookingsRes.rows.map((r) => ({
+        booking_id: r.booking_id,
+        service_name: r.service_name,
+        category: r.category,
+        amount: Number(r.total || r.base_price || 0),
+        payment_method: r.payment_method,
+        paid: Boolean(r.paid),
+        booking_status: r.booking_status,
+        gateway_order_id: r.provider_order_id || null,
+        gateway_payment_id: r.provider_payment_id || null,
+        gateway_status: r.gateway_status || (r.paid ? 'paid' : 'pending'),
+        created_at: r.created_at,
+        completed_at: r.completed_at || null
+      })),
+      wallet_transactions: walletRes.rows
+    });
   }));
 
   app.post('/api/wallet/topup', auth('customer'), h(async (req, res) => {
@@ -1831,15 +2509,33 @@ function createApp(db = openDb()) {
 
   app.post('/api/admin/technicians/:id/verify', auth('admin'), h(async (req, res) => {
     const techId = Number(req.params.id);
-    const verified = req.body.verified !== false ? 1 : 0;
+    const requestedStatus = req.body?.status ? String(req.body.status).trim().toLowerCase() : null;
+    const validStatuses = ['pending', 'approved', 'rejected', 'suspended'];
+    const nextStatus = requestedStatus && validStatuses.includes(requestedStatus)
+      ? requestedStatus
+      : (req.body.verified !== false ? 'approved' : 'rejected');
+    const verified = nextStatus === 'approved' ? 1 : 0;
+    const notes = req.body?.notes ? String(req.body.notes).trim().slice(0, 300) : null;
     const worker = await db.queryOne("SELECT * FROM users WHERE id = $1 AND role = 'worker'", [techId]);
     if (!worker) bad(404, 'Technician nahi mila');
 
-    await db.query('UPDATE users SET id_verified = $1 WHERE id = $2', [verified, techId]);
+    await db.query(
+      'UPDATE users SET id_verified = $1, verification_status = $2, verification_notes = $3 WHERE id = $4',
+      [verified, nextStatus, notes, techId]
+    );
+    await notifyUser({
+      userId: techId,
+      title: `Verification Status: ${nextStatus.toUpperCase()}`,
+      body: verified
+        ? 'Badhai ho! Aapka FixMate Service Provider account approve ho gaya hai. Ab aap booking requests accept kar sakte hain.'
+        : `Aapka verification status "${nextStatus}" update hua hai.${notes ? ' Reason: ' + notes : ''}`,
+      type: 'account_verification',
+      dedupeKey: `verify_${techId}_${nextStatus}_${Date.now()}`
+    });
     const updated = await db.queryOne('SELECT * FROM users WHERE id = $1', [techId]);
     ok(res, {
       user: pub(updated),
-      message: verified ? 'Technician ID verify kar di gayi (Badge active)' : 'Technician verification status hata diya gaya'
+      message: verified ? 'Technician ID verify kar di gayi (Badge active)' : `Technician verification status "${nextStatus}" set ho gaya`
     });
   }));
 

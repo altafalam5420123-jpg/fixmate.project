@@ -35,72 +35,19 @@ function getCatIcon(cat) {
   return map[cat] || 'tool';
 }
 
-const P = {
-  zap: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
-  plug: '<path d="M12 22v-5"/><path d="M9 8V2M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z"/>',
-  droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>',
-  snow: '<path d="M2 12h20M12 2v20M20 16l-4-4 4-4M4 8l4 4-4 4M16 4l-4 4-4-4M8 20l4-4 4 4"/>',
-  tv: '<rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/>',
-  bike: '<circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/>',
-  car: '<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/>',
-  book: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
-  grad: '<path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/>',
-  home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
-  list: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01"/>',
-  wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
-  pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/>',
-  theme: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>',
-  shield: '<path d="M20 13c0 5-3.5 7.5-7.7 8.97a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
-  star: '<polygon points="12 2 15.1 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 8.9 8.3 12 2"/>',
-  check: '<polyline points="20 6 9 17 4 12"/>',
-  dot: '<circle cx="12" cy="12" r="4"/>',
-  spark: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/>',
-  user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
-  phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
-  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
-  wind: '<path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/>',
-  disc: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/>',
-  box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
-  filter: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
-  tool: '<path d="m14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
-  brush: '<path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/>',
-  sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/>',
-  alert: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
-  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
-  tag: '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>',
-  camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
-  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
-  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
-  bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
-  nav: '<polygon points="3 11 22 2 13 21 11 13 3 11"/>'
-};
-
-function ic(n, sz = 20, f) {
-  return `<svg class="ico" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="${f ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || P.dot}</svg>`;
-}
-
-const BASE = '<path d="M8 60L60 84L112 60L60 38Z" fill="#E9E4DA"/><path d="M8 60L60 84V90L8 66Z" fill="#CFC8BB"/><path d="M112 60L60 84V90L112 66Z" fill="#DDD6CA"/>';
-const ART = [
-  '<rect x="38" y="20" width="44" height="38" rx="5" fill="#F8F8F6" stroke="#CFCFC8"/><rect x="46" y="27" width="10" height="16" rx="2" fill="#2F9E7A"/><rect x="64" y="27" width="10" height="16" rx="2" fill="#E8E8E2" stroke="#BDBDB5"/><circle cx="60" cy="50" r="4" fill="#3B4A57"/>',
-  '<rect x="58" y="14" width="4" height="34" fill="#2B3A42"/><ellipse cx="60" cy="50" rx="9" ry="4" fill="#2B3A42"/><path d="M60 48L98 38L100 43L62 52Z" fill="#B98A5E"/><path d="M60 48L22 38L20 43L58 52Z" fill="#B98A5E"/><path d="M58 50L45 66L51 68L63 53Z" fill="#C79A6E"/>',
-  '<rect x="34" y="28" width="52" height="32" rx="4" fill="#3C5A6B"/><rect x="40" y="34" width="22" height="9" rx="2" fill="#9ADBC4"/><circle cx="72" cy="39" r="4" fill="#F2B84B"/><rect x="40" y="48" width="40" height="4" rx="2" fill="#2A4250"/>',
-  '<path d="M44 60V32a14 14 0 0 1 28 0V38" fill="none" stroke="#9AA7B0" stroke-width="7" stroke-linecap="round"/><rect x="67" y="36" width="10" height="8" rx="2" fill="#7E8C96"/><path d="M72 48q-5 7 0 10q5-3 0-10z" fill="#5BB4E5"/>',
-  '<path d="M60 60V28" stroke="#9AA7B0" stroke-width="5"/><path d="M38 28a22 12 0 0 1 44 0Z" fill="#B7C3CB"/><path d="M46 34v8M54 34v14M62 34v8M70 34v14" stroke="#5BB4E5" stroke-width="2.5" stroke-linecap="round"/>',
-  '<rect x="40" y="26" width="40" height="34" rx="6" fill="#4F8FBF"/><rect x="40" y="26" width="40" height="9" rx="4" fill="#3E78A5"/><path d="M46 46q7-5 14 0t14 0" fill="none" stroke="#BFE3F7" stroke-width="3"/>',
-  '<rect x="26" y="22" width="68" height="22" rx="6" fill="#F4F6F6" stroke="#D2D8D8"/><rect x="32" y="35" width="56" height="4" rx="2" fill="#C9D3D3"/><circle cx="84" cy="29" r="2.2" fill="#2F9E7A"/><path d="M40 50q3 4 0 8M60 50q3 4 0 8M80 50q3 4 0 8" fill="none" stroke="#7CC4E8" stroke-width="2.5" stroke-linecap="round"/>',
-  '<rect x="48" y="26" width="24" height="34" rx="8" fill="#E26D5A"/><rect x="55" y="20" width="10" height="8" rx="2" fill="#6B7A85"/><rect x="48" y="38" width="24" height="8" fill="#F6F0E8"/><path d="M72 24q10-2 14 8" fill="none" stroke="#6B7A85" stroke-width="3" stroke-linecap="round"/>',
-  '<rect x="28" y="22" width="64" height="36" rx="4" fill="#2B3A42"/><rect x="32" y="26" width="56" height="28" rx="2" fill="#6EC1D9"/><path d="M32 46l16-12l14 10l10-7l16 12v5H32z" fill="#3E9B6B"/>',
-  '<rect x="26" y="20" width="68" height="34" rx="3" fill="#2B3A42"/><rect x="30" y="24" width="60" height="26" rx="2" fill="#7FB8D6"/><path d="M52 54L48 62M68 54L72 62" stroke="#8D98A0" stroke-width="4" stroke-linecap="round"/><rect x="44" y="60" width="32" height="3" rx="1.5" fill="#8D98A0"/>',
-  '<circle cx="38" cy="52" r="11" fill="none" stroke="#2B3A42" stroke-width="4"/><circle cx="84" cy="52" r="11" fill="none" stroke="#2B3A42" stroke-width="4"/><path d="M38 52L52 38H70L84 52M52 38L60 52H76" fill="none" stroke="#E26D5A" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/><rect x="52" y="32" width="18" height="6" rx="3" fill="#2B3A42"/><path d="M72 38L78 30H84" fill="none" stroke="#2B3A42" stroke-width="3" stroke-linecap="round"/>',
-  '<path d="M24 52V44q0-4 5-5l10-2l8-10h24l10 10l10 2q4 1 4 5V52Z" fill="#4F8FBF"/><path d="M48 28H70l8 9H42Z" fill="#CFE8F5"/><circle cx="42" cy="54" r="7" fill="#2B3A42"/><circle cx="82" cy="54" r="7" fill="#2B3A42"/><circle cx="42" cy="54" r="2.5" fill="#B9C3CA"/><circle cx="82" cy="54" r="2.5" fill="#B9C3CA"/>',
-  '<rect x="34" y="46" width="52" height="11" rx="2" fill="#2F9E7A"/><rect x="38" y="35" width="46" height="11" rx="2" fill="#F2B84B"/><rect x="36" y="24" width="48" height="11" rx="2" fill="#4F8FBF"/><path d="M42 29.5h20M46 40.5h16M40 51.5h22" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".8"/>',
-  '<rect x="34" y="24" width="52" height="32" rx="3" fill="#2B3A42"/><rect x="38" y="28" width="44" height="24" rx="1.5" fill="#9ADBC4"/><path d="M48 36l-4 4l4 4M72 36l4 4l-4 4M64 34l-8 12" fill="none" stroke="#2B3A42" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M28 58H92l-5 4H33Z" fill="#B8C2C8"/>'
-];
-
 function art(i) {
   const item = SV[i] || SV[0];
-  const artIdx = Math.abs(i) % ART.length;
-  return `<svg viewBox="0 0 120 92" width="100%" height="100%" role="img" aria-label="${esc(item.n)}">${BASE}${ART[artIdx]}</svg>`;
+  if (window.FixMateIcons && typeof window.FixMateIcons.fmServiceArt === 'function') {
+    return window.FixMateIcons.fmServiceArt(item.c, item.n, 42);
+  }
+  return '';
+}
+
+function emptyBox(iconName, title, desc, actionHtml = '') {
+  if (window.FixMateIcons && typeof window.FixMateIcons.fmEmptyState === 'function') {
+    return window.FixMateIcons.fmEmptyState({ icon: iconName, title, desc, actionHtml });
+  }
+  return `<div class="card mut" style="text-align:center;padding:24px">${esc(title)}</div>`;
 }
 
 const SL = ['Abhi (60 min mein)', 'Aaj 6 se 8 PM', 'Kal 10 se 12 AM', 'Kal 4 se 6 PM'];
@@ -134,8 +81,14 @@ let S = {
   reviewBookingId: null,
   reviewRating: 5,
   reviewComment: '',
-  wkTab: 'jobs',
-  wkStats: { completed_jobs: 0, active_jobs: 0, total_earnings: 0, avg_rating: 4.8, review_count: 0 },
+  wkTab: 'home',
+  wkJobsTab: 'upcoming',
+  wkEarnTab: 'overview',
+  wkProfileTab: 'profile',
+  wkAvail: [],
+  wkPayments: null,
+  wkPendingDocData: null,
+  wkStats: { pending_requests: 0, upcoming_jobs: 0, in_progress_jobs: 0, completed_jobs: 0, active_jobs: 0, cancelled_jobs: 0, total_earnings: 0, avg_rating: 4.8, review_count: 0 },
   wkReviews: [],
   wkStartPhotos: {},
   wkCompletePhotos: {},
@@ -157,6 +110,30 @@ let S = {
   warrantyHistory: [],
   emergencyAvail: null,
   pincodeCheckResult: null,
+  svcsTab: 'services',
+  svcSort: 'recommended',
+  providers: [],
+  provCat: 'Sab',
+  provQ: '',
+  provOnlineOnly: false,
+  provMinRating: 0,
+  provSort: 'rating',
+  selectedServiceDetail: null,
+  selectedServiceReviews: [],
+  selectedProvider: null,
+  selectedProviderReviews: [],
+  selectedProviderServices: [],
+  preferredWorker: null,
+  bkDate: '',
+  bkSlots: [],
+  bkSelectedTime: '',
+  bkInstructions: '',
+  bkMapConfirmed: false,
+  lastCreatedBooking: null,
+  bkTab: 'active',
+  paymentsHistory: [],
+  walletTxHistory: [],
+  pfTab: 'account',
   user: null,
   lg: { step: 0, ph: '', otp: '', tries: 0, exp: 0, rs: 0 }
 };
@@ -174,10 +151,26 @@ function toast(m) {
   toast.t = setTimeout(() => t.classList.remove('show'), 2400);
 }
 
-function theme() {
+function isDarkTheme() {
   const r = document.documentElement;
-  const d = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme:dark)').matches;
-  r.dataset.theme = d ? 'light' : 'dark';
+  return r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme:dark)').matches;
+}
+
+function applySavedTheme() {
+  try {
+    const saved = localStorage.getItem('fm_theme');
+    if (saved === 'light' || saved === 'dark') {
+      document.documentElement.dataset.theme = saved;
+    }
+  } catch (e) {}
+}
+
+function theme() {
+  const next = isDarkTheme() ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('fm_theme', next); } catch (e) {}
+  render();
+  toast(next === 'dark' ? 'Dark mode enabled' : 'Light mode enabled');
 }
 
 function go(s) {
@@ -194,10 +187,10 @@ function splash() {
   return `<div class="splash-screen">
     <div class="splash-logo-container">
       <div class="splash-logo-glow"></div>
-      <div class="splash-logo-badge">${ic('spark', 44)}</div>
+      <div class="splash-logo-badge">${fmLogo({ size: 54, onDark: true, showWordmark: false })}</div>
     </div>
-    <h1 class="splash-title">${BRAND}</h1>
-    <div class="splash-tagline">Ghar ke kaam, verified workers se. Ek tap mein service.</div>
+    <h1 class="splash-title">Fix<span style="color:#7CE8FA">Mate</span></h1>
+    <div class="splash-tagline">Trusted home services, verified professionals, and transparent pricing.</div>
     <div class="splash-loader"><div class="splash-loader-bar"></div></div>
   </div>`;
 }
@@ -207,22 +200,25 @@ function splash() {
    ======================================================== */
 const OBS = [
   {
-    pill: '⚡ 60-Minute Fast Service',
+    icon: 'zap',
+    pillIcon: 'clock',
+    pill: '60-Minute Fast Service',
     title: 'Verified Service Experts',
-    desc: 'Electrician, Plumber, AC Repair aur bohot kuch bas ek tap par. Sabhi technicians police-verified hain.',
-    art: () => `<svg viewBox="0 0 120 92" width="160" height="120" role="img">${BASE}${ART[0]}</svg>`
+    desc: 'Electrician, Plumber, AC Repair aur bohot kuch bas ek tap par. Sabhi technicians police-verified hain.'
   },
   {
-    pill: '🛡️ 100% Safe & Transparent',
+    icon: 'shieldCheck',
+    pillIcon: 'lock',
+    pill: '100% Safe & Transparent',
     title: 'Transparent Fixed Quotes',
-    desc: 'Worker ke aane par 4-digit safety code se kaam shuru. Bina aapki manzoori ke koi extra charge nahi.',
-    art: () => `<svg viewBox="0 0 120 92" width="160" height="120" role="img">${BASE}${ART[3]}</svg>`
+    desc: 'Worker ke aane par 4-digit safety code se kaam shuru. Bina aapki manzoori ke koi extra charge nahi.'
   },
   {
-    pill: '💳 30-Day Free Warranty',
+    icon: 'award',
+    pillIcon: 'checkCircle',
+    pill: '30-Day Free Warranty',
     title: 'Complete Peace of Mind',
-    desc: 'Har service par 30 din ki free warranty aur instant 5% cashback aapke FixMate wallet mein.',
-    art: () => `<svg viewBox="0 0 120 92" width="160" height="120" role="img">${BASE}${ART[6]}</svg>`
+    desc: 'Har service par 30 din ki free warranty aur instant 5% cashback aapke FixMate wallet mein.'
   }
 ];
 
@@ -231,12 +227,12 @@ function onboarding() {
   const isLast = S.obStep === OBS.length - 1;
   return `<div class="onboarding-wrap">
     <div class="onboarding-top">
-      <div style="font-weight:800;font-size:22px;color:var(--pri);letter-spacing:-0.02em">${BRAND}</div>
+      ${fmLogo({ size: 34 })}
       <button class="onboarding-skip-btn" onclick="finishOnboarding()">Skip</button>
     </div>
     <div class="onboarding-card">
-      <div class="onboarding-art">${cur.art()}</div>
-      <div class="onboarding-pill">${cur.pill}</div>
+      <div class="onboarding-art-badge">${ic(cur.icon, 52)}</div>
+      <div class="onboarding-pill">${ic(cur.pillIcon, 14)} ${cur.pill}</div>
       <h2 class="onboarding-title">${cur.title}</h2>
       <p class="onboarding-desc">${cur.desc}</p>
     </div>
@@ -244,8 +240,8 @@ function onboarding() {
       <div class="onboarding-dots">
         ${OBS.map((_, i) => `<span class="onboarding-dot ${S.obStep === i ? 'active' : ''}"></span>`).join('')}
       </div>
-      <button class="btn ${isLast ? 'acc' : ''}" style="width:100%;max-width:340px" onclick="nextOnboarding()">
-        ${isLast ? 'Shuru Karein (Get Started) 🚀' : 'Aage Badhein →'}
+      <button class="btn acc" style="width:100%;max-width:360px" onclick="nextOnboarding()">
+        ${isLast ? `Shuru Karein (Get Started) ${ic('arrowRight', 18)}` : `Aage Badhein ${ic('arrowRight', 18)}`}
       </button>
     </div>
   </div>`;
@@ -275,45 +271,52 @@ function login() {
   const L = S.lg;
   if (L.step === 0) {
     return `<div class="hd hero">
-      <div class="splash-icon">${ic('spark', 28)}</div>
-      <div class="brand-badge">${ic('shield', 13)} 100% Trusted Service</div>
-      <b style="font-size:32px;display:block;letter-spacing:-0.03em;margin-top:2px">${BRAND}</b>
-      <div style="margin-top:6px;font-size:14px;opacity:0.9">Ghar ke kaam, verified workers se. Shuru karne ke liye login karein.</div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <button class="ic" onclick="theme()" title="Switch Light/Dark theme" aria-label="Toggle theme">${ic(isDarkTheme() ? 'sun' : 'moon', 18)}</button>
+      </div>
+      <div style="display:flex;justify-content:center">${fmLogo({ size: 52, onDark: true })}</div>
+      <div class="brand-badge">${ic('shieldCheck', 14)} 100% Trusted Home Services</div>
+      <div style="margin-top:6px;font-size:14px;opacity:0.92;max-width:360px;margin-left:auto;margin-right:auto">Ghar ke kaam, verified professionals se. Shuru karne ke liye mobile number se login karein.</div>
     </div>
-    <div style="padding:16px 4px 0">
-      <h2>Mobile number</h2>
+    <div class="auth-card">
+      <h2 style="margin-top:0">Mobile Number</h2>
       <div class="row">
         <span class="badge" style="padding:13px 14px;font-size:14px">+91</span>
-        <input id="ph" type="tel" inputmode="numeric" maxlength="10" placeholder="10 digit number" value="${esc(L.ph)}" style="margin:0">
+        <input id="ph" type="tel" inputmode="numeric" maxlength="10" placeholder="10 digit mobile number" value="${esc(L.ph)}" style="margin:0">
       </div>
-      <div class="mut" style="margin:10px 0 16px">Hum OTP bhejenge. Aapka number bilkul surakshit rahega.</div>
-      <button class="btn acc" onclick="sendOtp()">OTP Bhejo</button>
+      <div class="mut" style="margin:10px 0 16px;display:flex;align-items:center;gap:6px">${ic('lock', 14)} Hum OTP bhejenge. Aapka number bilkul surakshit rahega.</div>
+      <button class="btn acc" onclick="sendOtp()">${ic('send', 16)} OTP Bhejo</button>
       <div style="text-align:center;margin-top:16px">
-        <button class="btn sm ghost" style="display:inline-flex;width:auto;padding:6px 14px;font-size:12px;opacity:0.85" onclick="setCustomServerUrl()">⚙️ Server: ${esc(getServerStatusLabel())}</button>
+        <button class="btn sm ghost" style="display:inline-flex;width:auto;padding:6px 14px;font-size:12px" onclick="setCustomServerUrl()" title="Configure API server endpoint">${ic('settings', 14)} Server: ${esc(getServerStatusLabel())}</button>
       </div>
     </div>`;
   }
 
   if (L.step === 1) {
     const cd = (L.cooldown || 0) > 0;
-    return `<button class="back" onclick="S.lg.step=0;render()">← Number badlo</button>
-    <h2 style="font-size:22px">OTP daalein</h2>
-    <div class="mut">+91 ${mk(L.ph)} pe 6 digit OTP bheja gaya hai.</div>
-    <div class="card" style="margin-top:14px;border-color:var(--sec)">${L.dev ? `Demo OTP: <b style="color:var(--sec);font-size:18px">${esc(L.dev)}</b>` : 'OTP SMS par bheja gaya hai.'}</div>
-    <input id="otp" type="tel" inputmode="numeric" maxlength="6" placeholder="------" style="margin:8px 0 14px;text-align:center;font-size:28px;letter-spacing:10px;font-weight:800">
-    <button class="btn acc" onclick="verOtp()">Verify Karein</button>
-    <button id="resend-btn" class="btn ghost" style="margin-top:10px;${cd ? 'opacity:0.6;cursor:not-allowed' : ''}" ${cd ? 'disabled' : ''} onclick="sendOtp(1)">${cd ? `OTP dobara bhejo (${L.cooldown}s)` : 'OTP dobara bhejo'}</button>`;
+    return `<button class="back" onclick="S.lg.step=0;render()">${ic('arrowLeft', 16)} Number badlo</button>
+    <div class="auth-card">
+      <h2 style="font-size:22px;margin-top:0">OTP Verification</h2>
+      <div class="mut">+91 ${mk(L.ph)} pe 6 digit OTP bheja gaya hai.</div>
+      <div class="fm-alert info" style="margin-top:14px">${ic('key', 16)} <div>${L.dev ? `Demo OTP: <b style="color:var(--pri);font-size:17px">${esc(L.dev)}</b>` : 'OTP aapke mobile par SMS ke zariye bheja gaya hai.'}</div></div>
+      <input id="otp" type="tel" inputmode="numeric" maxlength="6" placeholder="------" style="margin:8px 0 14px;text-align:center;font-size:28px;letter-spacing:10px;font-weight:800">
+      <button class="btn acc" onclick="verOtp()">${ic('checkCircle', 16)} Verify Karein</button>
+      <button id="resend-btn" class="btn ghost" style="margin-top:10px;${cd ? 'opacity:0.6;cursor:not-allowed' : ''}" ${cd ? 'disabled' : ''} onclick="sendOtp(1)">${ic('refresh', 15)} ${cd ? `OTP dobara bhejo (${L.cooldown}s)` : 'OTP dobara bhejo'}</button>
+    </div>`;
   }
 
-  return `<h2 style="font-size:22px;margin-top:24px">Number verify ho gaya</h2>
-  <div class="mut" style="margin-bottom:14px">Bas ek step baaki hai profile poori karne ke liye.</div>
-  <label for="nm" style="font-weight:700;font-size:14px">Aapka naam</label>
-  <input id="nm" placeholder="Poora naam" style="margin-top:6px">
-  <label for="sk" style="font-weight:700;font-size:14px">Worker ho to apna kaam chuno</label>
+  return `<div class="auth-card" style="margin-top:20px">
+  <div class="badge ok" style="margin-bottom:10px">${ic('checkCircle', 14)} Mobile Verified</div>
+  <h2 style="font-size:22px;margin-top:0">Complete Your Profile</h2>
+  <div class="mut" style="margin-bottom:14px">Bas ek step baaki hai apna FixMate account shuru karne ke liye.</div>
+  <label for="nm" style="font-weight:700;font-size:13.5px">Aapka Poora Naam</label>
+  <input id="nm" placeholder="Full name" style="margin-top:6px">
+  <label for="sk" style="font-weight:700;font-size:13.5px">Service Provider ho to apna kaam chuno</label>
   <select id="sk" style="margin-top:6px">${CATS.map((c) => `<option>${c}</option>`).join('')}</select>
-  <button class="btn acc" onclick="fin2('customer')">Customer ban kar shuru karo</button>
-  <button class="btn ghost" style="margin-top:10px" onclick="fin2('worker')">Worker ban kar kaam lo</button>
-  <div class="mut" style="margin-top:10px">Worker ki ID aur verification ke baad hi requests milengi.</div>`;
+  <button class="btn acc" onclick="fin2('customer')">${ic('user', 16)} Customer Account Shuru Karein</button>
+  <button class="btn ghost" style="margin-top:10px" onclick="fin2('worker')">${ic('tool', 16)} Service Provider Ban Kar Kaam Lein</button>
+  <div class="mut" style="margin-top:12px;display:flex;align-items:center;gap:6px;font-size:12px">${ic('shield', 14)} Provider ki ID aur verification ke baad hi requests milengi.</div>
+  </div>`;
 }
 
 function startOtpCooldown() {
@@ -435,16 +438,13 @@ function fl() {
 
 function grid(L) {
   if (!L.length) {
-    return `<div class="card mut" style="grid-column: 1 / -1;text-align:center;padding:24px">
-      ${ic('tool', 32)}
-      <div style="margin-top:8px">Ye service abhi nahi mili. Dusra naam try karo ya category chun lo.</div>
-    </div>`;
+    return `<div style="grid-column: 1 / -1">${emptyBox('search', 'Service nahi mili', 'Ye service abhi nahi mili. Dusra naam try karo ya category chun lo.')}</div>`;
   }
   return L.map(([x, i]) => `
     <button class="sc" onclick="pick(${i})">
       <div class="im">
         ${art(i)}
-        <span class="rt">${ic('star', 11, 1)} ${x.r || 4.8} (${x.k || '5k+'})</span>
+        <span class="rt">${ic('star', 11, true)} ${x.r || 4.8} (${x.k || '5k+'})</span>
       </div>
       <b>${esc(x.n)}</b>
       <span class="mut" style="font-size:12px">${esc(x.c)}</span>
@@ -458,52 +458,84 @@ function sr() {
   if (gr) gr.innerHTML = grid(fl());
 }
 
+function renderDesktopBar() {
+  if (!S.user || S.user.role === 'admin') return '';
+  const isWk = S.user.role === 'worker';
+  const links = isWk ? [
+    { id: 'home', label: 'Home', icon: 'home', active: (S.wkTab || 'home') === 'home', click: "setWkTab('home')" },
+    { id: 'requests', label: 'Requests', icon: 'bell', active: S.wkTab === 'requests', click: "setWkTab('requests')", badge: S.B.filter((b) => b.status === 'requested').length },
+    { id: 'jobs', label: 'Jobs', icon: 'tool', active: S.wkTab === 'jobs', click: "setWkTab('jobs')" },
+    { id: 'earnings', label: 'Earnings', icon: 'wallet', active: S.wkTab === 'earnings', click: "setWkTab('earnings')" },
+    { id: 'profile', label: 'Profile', icon: 'user', active: S.wkTab === 'profile', click: "setWkTab('profile')" }
+  ] : [
+    { id: 'home', label: 'Home', icon: 'home', active: S.scr === 'home', click: "go('home')" },
+    { id: 'svcs', label: 'Services', icon: 'grid', active: ['svcs', 'svcDetail', 'provider', 'book', 'bkConfirm'].includes(S.scr), click: "go('svcs')" },
+    { id: 'bk', label: 'Bookings', icon: 'list', active: S.scr === 'bk', click: "go('bk')" },
+    { id: 'notif', label: 'Notifications', icon: 'bell', active: S.scr === 'notif', click: "go('notif')", badge: S.unreadNotifications },
+    { id: 'pf', label: 'Profile', icon: 'user', active: S.scr === 'pf' || S.scr === 'mo', click: "go('pf')" }
+  ];
+  return `<header class="fm-desktop-bar">
+    <div>${fmLogo({ size: 34, subtitle: isWk ? 'Service Partner' : 'Customer App' })}</div>
+    <nav class="fm-desktop-links" aria-label="Desktop navigation">
+      ${links.map((l) => `<button class="fm-desktop-link ${l.active ? 'on' : ''}" onclick="${l.click}">${ic(l.icon, 16)} ${l.label}${l.badge ? ` <span class="badge bad" style="padding:1px 6px;font-size:10px">${l.badge > 9 ? '9+' : l.badge}</span>` : ''}</button>`).join('')}
+    </nav>
+    <div class="fm-desktop-actions">
+      ${!isWk ? `<button class="fm-icon-btn" onclick="go('mo')" title="FixMate Wallet (${inr(S.w)})" aria-label="Wallet">${ic('wallet', 18)}</button>` : ''}
+      <button class="fm-icon-btn" onclick="theme()" title="Toggle Light/Dark theme" aria-label="Toggle theme">${ic(isDarkTheme() ? 'sun' : 'moon', 18)}</button>
+      <button class="btn sm ghost" onclick="out()" title="Logout">${ic('logOut', 15)} Logout</button>
+    </div>
+  </header>`;
+}
+
 function home() {
   const activeBooking = S.B.find((b) => !b.paid && b.status !== 'cancelled');
 
   return `<div class="hd">
     <div class="row">
-      <b style="font-size:26px;letter-spacing:-0.03em">${BRAND}</b>
+      ${fmLogo({ size: 34, onDark: true })}
       <div class="ics">
-        <button class="ic" style="position:relative" onclick="openNotificationsModal()" aria-label="Notifications">
+        <button class="ic" onclick="openNotificationsModal()" title="Notifications" aria-label="Notifications">
           ${ic('bell', 18)}
           ${S.unreadNotifications > 0 ? `<span class="notif-dot">${S.unreadNotifications > 9 ? '9+' : S.unreadNotifications}</span>` : ''}
         </button>
-        <button class="ic" onclick="go('pf')" aria-label="Profile">${ic('user', 18)}</button>
-        <button class="ic" onclick="theme()" aria-label="Theme badlo">${ic('theme', 18)}</button>
+        <button class="ic" onclick="go('pf')" title="Profile & Settings" aria-label="Profile">${ic('user', 18)}</button>
+        <button class="ic" onclick="theme()" title="Toggle Light/Dark theme" aria-label="Toggle theme">${ic(isDarkTheme() ? 'sun' : 'moon', 18)}</button>
       </div>
     </div>
-    <div class="loc" style="cursor:pointer" onclick="openAddressModal()">
-      ${ic('pin', 14)} <span>${esc(S.ad || CITY + ', Jharkhand')}</span> ▾
+    <button class="loc" onclick="openAddressModal()" title="Change service address">
+      ${ic('pin', 14)} <span>${esc(S.ad || CITY + ', Jharkhand')}</span> ${ic('chevronDown', 14)}
+    </button>
+    <div class="search-input-wrap">
+      <span class="ico-search">${ic('search', 18)}</span>
+      <input id="q" placeholder="Kaunsi service chahiye? (e.g. AC, Tap, Fan)" value="${esc(S.q)}" oninput="S.q=this.value;sr()">
     </div>
-    <input id="q" placeholder="Kaunsi service chahiye? (e.g. AC, Tap, Fan)" value="${esc(S.q)}" oninput="S.q=this.value;sr()">
   </div>
 
   ${activeBooking ? `
     <div class="active-booking-banner" onclick="go('bk')">
       <div>
-        <div style="font-size:11px;font-weight:800;color:var(--teal);text-transform:uppercase;letter-spacing:0.5px">Active Booking</div>
-        <b style="font-size:14px;color:var(--ink)">${esc(activeBooking.service)}</b>
-        <div class="mut" style="font-size:12px">${esc(activeBooking.label)} • Code: <b style="color:var(--sec)">${esc(activeBooking.start_code)}</b></div>
+        <div style="font-size:11px;font-weight:800;color:var(--pri);text-transform:uppercase;letter-spacing:0.5px">Active Booking</div>
+        <b style="font-size:14.5px;color:var(--ink)">${esc(activeBooking.service)}</b>
+        <div class="mut" style="font-size:12px">${esc(activeBooking.label)} • Code: <b style="color:var(--pri)">${esc(activeBooking.start_code)}</b></div>
       </div>
-      <button class="btn sm" style="width:auto;padding:6px 14px;font-size:12px">Track →</button>
+      <button class="btn sm" style="width:auto;padding:7px 14px;font-size:12px">Track ${ic('arrowRight', 14)}</button>
     </div>
   ` : ''}
 
   <!-- Emergency 60-min Booking Mode -->
   <div class="emergency-strip" onclick="toggleEmergency()">
     <div>
-      <b>${ic('alert', 16)} ${S.emergency ? '🚨 Emergency Mode Active' : '⚡ 60-Min Emergency Service'}</b>
+      <b>${ic('alertTriangle', 16)} ${S.emergency ? 'Emergency Mode Active' : '60-Min Emergency Service'}</b>
       <span>${S.emergency ? 'Tap karein normal view par lautne ke liye' : 'Bijli, paani ya AC breakdown? Urgent worker dispatch'}</span>
     </div>
-    <span class="badge" style="background:#FFFFFF;color:#DC2626;font-weight:800">${S.emergency ? 'Normal Mode' : 'Priority ⚡'}</span>
+    <span class="badge" style="background:#FFFFFF;color:#DC2626;font-weight:800">${S.emergency ? 'Normal Mode' : 'Priority'}</span>
   </div>
 
   <!-- Coupons & Offers Carousel -->
   ${S.coupons.length ? `
     <div class="coupons-strip">
       ${S.coupons.map((c) => `
-        <div class="coupon-pill" onclick="copyCoupon('${esc(c.code)}')">
+        <div class="coupon-pill" onclick="copyCoupon('${esc(c.code)}')" title="Click to copy coupon">
           ${ic('tag', 15)}
           <div>
             <b>${esc(c.code)}</b>
@@ -514,38 +546,30 @@ function home() {
     </div>
   ` : ''}
 
-  <div class="trust">${ic('shield', 16)} Verified worker, OTP se kaam shuru, pehle quote, 30 din warranty</div>
+  <div class="trust">${ic('shieldCheck', 18)} <span>Verified technician, OTP safety start code, upfront quote, 30-day warranty</span></div>
 
   <!-- AI Voice & Chat Assistant Banner -->
   <div class="ai-home-banner" onclick="window.FixMateAI&&window.FixMateAI.open('voice')">
     <div class="ai-banner-left">
-      <div class="ai-banner-badge">✨ AI Voice & Chat Assistant</div>
+      <div class="ai-banner-badge">${ic('sparkles', 13)} AI Voice & Chat Assistant</div>
       <div class="ai-banner-title">Talk to FixMate AI</div>
       <div class="ai-banner-sub">Bol kar ya likh kar koi bhi service book karein</div>
     </div>
     <div class="ai-banner-mic-btn">
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-        <line x1="12" y1="19" x2="12" y2="22"/>
-      </svg>
+      ${ic('mic', 22)}
     </div>
   </div>
 
   <!-- Smart Service Finder (Text + Voice) -->
   <div class="card">
-    <b>${ic('spark', 16)} Smart Service Finder — Problem batao</b>
-    <div class="mut">Apni dikkat bolein ya likhein (e.g. "AC thandi hawa nahi de raha", "Fan kaam nahi kar raha")</div>
-    <div class="row" style="margin-top:8px;gap:6px">
+    <b style="display:flex;align-items:center;gap:6px">${ic('sparkles', 16)} Smart Service Finder — Problem batao</b>
+    <div class="mut" style="margin-top:2px">Apni dikkat bolein ya likhein (e.g. "AC thandi hawa nahi de raha", "Fan kaam nahi kar raha")</div>
+    <div class="row" style="margin-top:10px;gap:6px">
       <input id="pb" placeholder="Jaise: AC thanda nahi kar raha, tap leak..." style="margin:0;flex:1" onkeydown="if(event.key==='Enter') diag()">
-      <button id="mic-diag-btn" class="mic-finder-btn" onclick="voiceDiag()" title="Bol kar dhundein" aria-label="Voice search problem">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-          <line x1="12" y1="19" x2="12" y2="22"/>
-        </svg>
+      <button id="mic-diag-btn" class="mic-finder-btn" onclick="voiceDiag()" title="Voice search" aria-label="Voice search problem">
+        ${ic('mic', 18)}
       </button>
-      <button class="btn sm" onclick="diag()">Dhundo</button>
+      <button class="btn sm" onclick="diag()">${ic('search', 15)} Dhundo</button>
     </div>
     <div id="dg"></div>
   </div>
@@ -558,7 +582,7 @@ function home() {
   </div>
 
   <!-- Services Grid -->
-  <div id="gr" class="grid">${grid(fl())}</div>`;
+  <div id="gr" class="grid">${S.catalogLoading ? window.FixMateIcons?.fmSkeleton('cards', 4) || '' : grid(fl())}</div>`;
 }
 
 async function checkEmergencyForService(cat) {
@@ -661,31 +685,34 @@ function book() {
   const estimatedTotal = Math.max(0, x.p + emergencyFee - discount);
   const avail = S.emergencyAvail;
 
-  return `<button class="back" onclick="go('home')">← Wapas Home Pe</button>
+  return `<button class="back" onclick="go('home')">${ic('arrowLeft', 16)} Wapas Home Pe</button>
 
   <div class="card row" style="justify-content:flex-start;margin-top:10px">
     <div class="im sm" style="width:70px;height:70px;flex-shrink:0">${art(S.sv)}</div>
     <div>
       <b style="font-size:16px">${esc(x.n)}</b>
-      <div class="mut">${esc(x.c)} • ${ic('star', 12, 1)} ${x.r || 4.8}</div>
-      <div style="font-weight:800;color:var(--teal);margin-top:2px">${isTutor ? 'Free Demo Class' : inr(x.p)}</div>
+      <div class="mut" style="display:flex;align-items:center;gap:6px">${esc(x.c)} • ${ic('star', 13, true)} ${x.r || 4.8}</div>
+      <div style="font-weight:800;color:var(--pri);margin-top:2px">${isTutor ? 'Free Demo Class' : inr(x.p)}</div>
     </div>
   </div>
 
   ${S.emergency ? `
-    <div class="badge" style="background:${avail && !avail.available ? '#FEF3C7' : '#FEE2E2'};color:${avail && !avail.available ? '#92400E' : '#DC2626'};padding:10px 14px;font-size:12.5px;margin:12px 0;display:block;line-height:1.4">
+    <div class="fm-alert ${avail && !avail.available ? 'warning' : 'error'}" style="margin:12px 0">
+      ${ic('alertTriangle', 18)}
+      <div>
       ${avail
         ? (avail.available
-            ? `🚨 <b>Emergency Confirmed Available:</b> ${avail.online_technicians} verified technician(s) abhi online hain! Express fee: <b>₹99</b>.`
-            : `⚠️ <b>No Emergency Tech Online:</b> Abhi ${esc(x.c)} mein koi technician online nahi hai. Kripya normal slot chunein ya Emergency off karein.`)
-        : '🚨 <b>Emergency Priority Mode:</b> Live technician availability check ki ja rahi hai (₹99 express fee).'}
+            ? `<b>Emergency Confirmed Available:</b> ${avail.online_technicians} verified technician(s) abhi online hain! Express fee: <b>₹99</b>.`
+            : `<b>No Emergency Tech Online:</b> Abhi ${esc(x.c)} mein koi technician online nahi hai. Kripya normal slot chunein ya Emergency off karein.`)
+        : '<b>Emergency Priority Mode:</b> Live technician availability check ki ja rahi hai (₹99 express fee).'}
+      </div>
     </div>
   ` : ''}
 
   ${matchingAmc ? `
-    <div class="card row" style="border-color:var(--teal);background:rgba(0,106,96,0.06);margin:10px 0;cursor:pointer" onclick="S.selectedAmcSubId=${useAmc ? 'null' : matchingAmc.id};render()">
+    <div class="card row" style="border-color:var(--pri);background:var(--pri-soft);margin:10px 0;cursor:pointer" onclick="S.selectedAmcSubId=${useAmc ? 'null' : matchingAmc.id};render()">
       <div>
-        <b style="color:var(--teal)">🛡️ Active AMC Plan: ${esc(matchingAmc.plan_name)}</b>
+        <b style="color:var(--pri);display:flex;align-items:center;gap:6px">${ic('shieldCheck', 16)} Active AMC Plan: ${esc(matchingAmc.plan_name)}</b>
         <div class="mut" style="font-size:12px">${matchingAmc.visits_remaining} free visit(s) remaining</div>
       </div>
       <input type="checkbox" ${useAmc ? 'checked' : ''} style="width:auto;margin:0;pointer-events:none">
@@ -699,10 +726,10 @@ function book() {
   <div class="photo-upload-wrap">
     ${S.bookingPhoto ? `
       <img src="${S.bookingPhoto}" class="photo-preview-thumb" alt="Issue photo">
-      <button class="btn sm ghost" style="width:auto;padding:4px 12px;font-size:12px;color:var(--bad)" onclick="removePhoto()">❌ Photo Hatayein</button>
+      <button class="btn sm ghost" style="width:auto;padding:5px 12px;font-size:12px;color:var(--bad)" onclick="removePhoto()">${ic('trash', 14)} Photo Hatayein</button>
     ` : `
       <label for="bk-file" style="cursor:pointer;display:block">
-        <div style="font-size:24px;margin-bottom:4px">${ic('camera', 28)}</div>
+        <div style="margin-bottom:6px;color:var(--pri)">${ic('camera', 26)}</div>
         <b>Dikkat ki photo jodein (Optional)</b>
         <div class="mut" style="font-size:12px">Technician ko pehle samajhne mein asani hogi</div>
       </label>
@@ -710,49 +737,50 @@ function book() {
     `}
   </div>
 
-  <h2>Date & Time Slot</h2>
+  <h2 style="display:flex;align-items:center;gap:7px">${ic('calendar', 18)} Date & Time Slot</h2>
   <div class="chips">
     ${sl.map((s, i) => `
-      <button class="chip ${S.slot === i ? 'on' : ''}" onclick="S.slot=${i};render()">${s}</button>
+      <button class="chip ${S.slot === i ? 'on' : ''}" onclick="S.slot=${i};render()">${ic('clock', 13)} ${s}</button>
     `).join('')}
   </div>
 
   ${S.familyMembers && S.familyMembers.length ? `
     <h2>Kis ke liye book kar rahe hain?</h2>
     <div class="chips" style="margin-bottom:8px">
-      <button class="chip ${!S.selectedFamilyMember ? 'on' : ''}" onclick="S.selectedFamilyMember='';render()">👤 Myself</button>
+      <button class="chip ${!S.selectedFamilyMember ? 'on' : ''}" onclick="S.selectedFamilyMember='';render()">${ic('user', 13)} Myself</button>
       ${S.familyMembers.map((m) => `
         <button class="chip ${S.selectedFamilyMember === m.member_name ? 'on' : ''}" onclick="S.selectedFamilyMember='${esc(m.member_name)}';render()">
-          👨‍👩‍👧 ${esc(m.member_name)} (${esc(m.relation)})
+          ${ic('users', 13)} ${esc(m.member_name)} (${esc(m.relation)})
         </button>
       `).join('')}
     </div>
   ` : ''}
 
-  <h2>Address</h2>
+  <h2 style="display:flex;align-items:center;gap:7px">${ic('pin', 18)} Address</h2>
   ${S.addresses.length ? `
     <div class="chips" style="margin-bottom:8px">
       ${S.addresses.map((a) => {
         const full = a.address_line + (a.landmark ? ', ' + a.landmark : '') + ', ' + a.city;
         const isSel = S.ad === full;
+        const addrIcon = a.label === 'Home' ? 'home' : (a.label === 'Work' ? 'building' : 'pin');
         return `<button class="chip ${isSel ? 'on' : ''}" onclick="S.ad='${esc(full)}';render()">
-          ${a.label === 'Home' ? '🏠' : a.label === 'Work' ? '🏢' : '📍'} ${esc(a.label)}
+          ${ic(addrIcon, 13)} ${esc(a.label)}
         </button>`;
       }).join('')}
-      <button class="chip" onclick="openAddAddressModal()">+ Naya Address</button>
+      <button class="chip" onclick="openAddAddressModal()">${ic('plus', 13)} Naya Address</button>
     </div>
   ` : ''}
   <input id="ad" placeholder="Ghar / Flat no, gali, landmark, Dhanbad" value="${esc(S.ad)}" oninput="S.ad=this.value">
   <button class="btn sm ghost" style="margin-bottom:14px;font-size:12px" onclick="captureCustomerGps()">
-    ${S.customerLat ? `✅ GPS Pin Set (${S.customerLat.toFixed(4)}, ${S.customerLng.toFixed(4)})` : '📍 Set Exact Map Pin (Optional — Live ETA ke liye)'}
+    ${S.customerLat ? `${ic('checkCircle', 14)} GPS Pin Set (${S.customerLat.toFixed(4)}, ${S.customerLng.toFixed(4)})` : `${ic('locate', 14)} Set Exact Map Pin (Optional — Live ETA ke liye)`}
   </button>
 
   <!-- Offers & Coupons -->
-  <h2>Offers & Coupons</h2>
+  <h2 style="display:flex;align-items:center;gap:7px">${ic('tag', 18)} Offers & Coupons</h2>
   ${S.appliedCoupon ? `
-    <div class="card row" style="border-color:var(--ok);background:rgba(30,130,76,0.06)">
+    <div class="card row" style="border-color:var(--ok);background:var(--ok-soft)">
       <div>
-        <b style="color:var(--ok)">🎉 ${esc(S.appliedCoupon.code)} Applied!</b>
+        <b style="color:var(--ok);display:flex;align-items:center;gap:6px">${ic('checkCircle', 15)} ${esc(S.appliedCoupon.code)} Applied!</b>
         <div class="mut" style="font-size:12px">${esc(S.appliedCoupon.title)} (-${inr(S.appliedCoupon.discount_amount)})</div>
       </div>
       <button class="btn sm ghost" style="width:auto;padding:4px 10px;font-size:12px" onclick="removeAppliedCoupon()">Hatao</button>
@@ -776,7 +804,7 @@ function book() {
       <span>${isTutor ? 'Free Demo' : inr(x.p)}</span>
     </div>
     ${emergencyFee > 0 ? `
-      <div class="price-line" style="color:#DC2626">
+      <div class="price-line" style="color:var(--bad)">
         <span>Priority Emergency Dispatch Fee</span>
         <span>+${inr(emergencyFee)}</span>
       </div>
@@ -793,20 +821,23 @@ function book() {
     </div>
   </div>
 
-  <div class="card mut" style="font-size:12.5px;line-height:1.4">
-    🛡️ <b>FixMate Safety & Pricing Guarantee:</b><br>
-    Visit fee ₹99 kaam banne par final quote mein jud jati hai. Worker aane ke baad exact quote dega. Bina aapki manzoori ke koi kaam nahi hoga. 30 din ki free warranty.
+  <div class="fm-alert info" style="margin-bottom:14px">
+    ${ic('shieldCheck', 18)}
+    <div>
+      <b>FixMate Safety & Pricing Guarantee:</b><br>
+      Visit fee ₹99 kaam banne par final quote mein jud jati hai. Worker aane ke baad exact quote dega. Bina aapki manzoori ke koi kaam nahi hoga. 30 din ki free warranty.
+    </div>
   </div>
 
   <h2>Payment (Kaam poora hone ke baad)</h2>
   <div class="chips">
-    <button class="chip ${S.pay === 'wallet' ? 'on' : ''}" onclick="S.pay='wallet';render()">FixMate Wallet (Balance: ${inr(S.w)})</button>
-    <button class="chip ${S.pay === 'cash' ? 'on' : ''}" onclick="S.pay='cash';render()">Cash on Completion</button>
-    <button class="chip ${S.pay === 'razorpay' ? 'on' : ''}" onclick="S.pay='razorpay';render()">Online UPI / Card</button>
+    <button class="chip ${S.pay === 'wallet' ? 'on' : ''}" onclick="S.pay='wallet';render()">${ic('wallet', 14)} FixMate Wallet (${inr(S.w)})</button>
+    <button class="chip ${S.pay === 'cash' ? 'on' : ''}" onclick="S.pay='cash';render()">${ic('checkCircle', 14)} Cash on Completion</button>
+    <button class="chip ${S.pay === 'razorpay' ? 'on' : ''}" onclick="S.pay='razorpay';render()">${ic('creditCard', 14)} Online UPI / Card</button>
   </div>
 
   <button class="btn acc" style="margin-top:16px" onclick="doBook()">
-    ${isTutor ? 'Free Demo Book Karein' : `Book Confirm Karein (${inr(estimatedTotal)})`}
+    ${ic('checkCircle', 17)} ${isTutor ? 'Free Demo Book Karein' : `Book Confirm Karein (${inr(estimatedTotal)})`}
   </button>`;
 }
 
@@ -861,19 +892,19 @@ function bkc(b) {
 
   return `<div class="card" style="margin-bottom:14px">
     <div class="row">
-      <b>${ic(x.e || 'tool', 18)} ${esc(b.service)}</b>
-      ${isCan ? '<span class="badge" style="background:#FEE2E2;color:#DC2626">Cancel hui</span>' : b.paid ? '<span class="badge ok">Paid & Closed</span>' : `<span class="badge">${esc(b.label)}</span>`}
+      <b style="display:flex;align-items:center;gap:7px">${ic(x.e || 'tool', 18)} ${esc(b.service)}</b>
+      ${isCan ? `<span class="badge bad">${ic('xCircle', 12)} Cancel hui</span>` : b.paid ? `<span class="badge ok">${ic('checkCircle', 12)} Paid & Closed</span>` : `<span class="badge">${esc(b.label)}</span>`}
     </div>
-    <div class="mut" style="font-size:13px;margin-top:2px">${esc(b.slot)} • ${esc(b.address)}</div>
+    <div class="mut" style="font-size:13px;margin-top:4px">${esc(b.slot)} • ${esc(b.address)}</div>
 
     ${b.issue_desc ? `<div class="card" style="background:var(--soft);border:none;padding:8px 12px;margin:8px 0;font-size:12.5px"><b>Dikkat:</b> ${esc(b.issue_desc)}</div>` : ''}
 
-    ${b.is_emergency ? `<div class="badge" style="background:#FEE2E2;color:#DC2626;display:inline-block;margin-top:4px">🚨 Emergency Priority Booking</div>` : ''}
+    ${b.is_emergency ? `<div class="badge bad" style="margin-top:6px">${ic('alertTriangle', 12)} Emergency Priority Booking</div>` : ''}
 
     ${isCan ? `
       <div class="mut" style="margin-top:8px">Ye booking cancel ho chuki hai. Aap chahein to dobara book kar sakte hain.</div>
     ` : `
-      <div class="tl">${SL2.map((t, k) => `<div class="${k <= i ? 'd' : ''}"><span>${ic(k <= i ? 'check' : 'dot', 14)}</span>${t}</div>`).join('')}</div>
+      <div class="tl">${SL2.map((t, k) => `<div class="${k <= i ? 'd' : ''}"><span>${ic(k <= i ? 'checkCircle' : 'dot', 14)}</span>${t}</div>`).join('')}</div>
     `}
 
     ${i >= 1 && !isCan ? `
@@ -888,12 +919,12 @@ function bkc(b) {
 
     ${b.contact_phone && !isCan ? `
       <div class="row" style="margin-top:10px;gap:8px">
-        <a href="tel:${esc(b.contact_phone)}" class="btn sm" style="flex:1;text-decoration:none;background:var(--sec);color:#fff">
+        <a href="tel:${esc(b.contact_phone)}" class="btn sm sec" style="flex:1;text-decoration:none">
           ${ic('phone', 16)} Call Tech
         </a>
         ${['assigned', 'on_the_way', 'inspecting', 'quoted', 'in_progress'].includes(b.status) ? `
           <button class="btn sm acc" style="flex:1.2" onclick="openTrackingModal(${b.id})">
-            🗺️ Live Map${b.tracking_active && b.eta_minutes ? ` (${b.eta_minutes}m)` : ' & ETA'}
+            ${ic('map', 15)} Live Map${b.tracking_active && b.eta_minutes ? ` (${b.eta_minutes}m)` : ' & ETA'}
           </button>
         ` : ''}
       </div>
@@ -901,9 +932,9 @@ function bkc(b) {
 
     <!-- Prominent Safety Code for Worker Arrival -->
     ${i >= 0 && i <= 2 && !isCan ? `
-      <div class="card" style="background:rgba(0,106,96,0.06);border-color:var(--teal);margin-top:10px;text-align:center">
+      <div class="card" style="background:var(--pri-soft);border-color:var(--pri);margin-top:10px;text-align:center">
         <div class="mut" style="font-size:12px">Worker aane par ye 4-digit safety code batayein:</div>
-        <div class="otp" style="font-size:32px;font-weight:800;letter-spacing:8px;color:var(--teal);margin:4px 0">${esc(b.start_code)}</div>
+        <div class="otp" style="font-size:32px;font-weight:800;letter-spacing:8px;color:var(--pri);margin:6px 0">${esc(b.start_code)}</div>
         <div class="mut" style="font-size:11px">Code verify hone ke baad hi worker ka kaam shuru hoga.</div>
       </div>
     ` : ''}
@@ -912,27 +943,27 @@ function bkc(b) {
     ${['requested', 'assigned'].includes(b.status) ? `
       <div class="row" style="margin-top:10px">
         <button class="btn sm ghost" onclick="openRescheduleModal(${b.id})">${ic('clock', 14)} Reschedule Slot</button>
-        <button class="btn sm ghost" style="color:var(--bad);border-color:rgba(239,68,68,0.3)" onclick="cancelBook(${b.id})">${ic('x', 14)} Cancel</button>
+        <button class="btn sm ghost" style="color:var(--bad);border-color:rgba(220,38,38,0.3)" onclick="cancelBook(${b.id})">${ic('x', 14)} Cancel</button>
       </div>
     ` : ''}
 
     <!-- Quote details -->
     ${b.status === 'quoted' ? `
-      <div class="card" style="border-color:var(--teal);background:rgba(0,106,96,0.03);margin:10px 0 0">
-        <div style="font-weight:800;font-size:14px;color:var(--teal)">📋 Inspection Quote & Parts Breakdown</div>
+      <div class="card" style="border-color:var(--pri);background:var(--pri-soft);margin:10px 0 0">
+        <div style="font-weight:800;font-size:14px;color:var(--pri);display:flex;align-items:center;gap:6px">${ic('fileText', 16)} Inspection Quote & Parts Breakdown</div>
         <div class="row mut" style="margin-top:6px"><span>Service Base Labor</span><span>${inr(b.price)}</span></div>
         <div class="row mut"><span>Inspection / Visiting Fee</span><span>₹99 <small style="color:var(--ok)">(Waived on approval)</small></span></div>
         ${b.parts ? `<div class="row mut"><span>Genuine spare parts: <b>${esc(b.parts_desc || 'Replacement parts')}</b></span><span>${inr(b.parts)}</span></div>` : ''}
         ${b.discount_amount ? `<div class="row" style="color:var(--ok)"><span>Promo Discount</span><span>-${inr(b.discount_amount)}</span></div>` : ''}
         <div class="row" style="border-top:1px dashed var(--bd);padding-top:6px;margin-top:6px">
-          <b>Total Payable Estimate</b><b style="color:var(--teal);font-size:16px">${inr(b.total)}</b>
+          <b>Total Payable Estimate</b><b style="color:var(--pri);font-size:16px">${inr(b.total)}</b>
         </div>
-        <div class="mut" style="font-size:11.5px;margin:8px 0 10px;line-height:1.4">
-          🛡️ <b>Transparent Price Guarantee:</b> Bina aapki manzoori ke technician kaam shuru nahi karega. Manzoor karne par 30 din ki warranty lagu hogi. Agar aap quote reject karte hain to sirf ₹99 visiting fee lagegi.
+        <div class="mut" style="font-size:11.5px;margin:8px 0 10px;line-height:1.4;display:flex;gap:6px;align-items:flex-start">
+          ${ic('shieldCheck', 15)} <span><b>Transparent Price Guarantee:</b> Bina aapki manzoori ke technician kaam shuru nahi karega. Manzoor karne par 30 din ki warranty lagu hogi. Reject karne par sirf ₹99 visiting fee lagegi.</span>
         </div>
         <div class="row" style="margin-top:10px">
-          <button class="btn sm" onclick="post(${b.id},'approve',null,'Quote manzoor kiya! Kaam shuru ho raha hai.')">✅ Manzoor hai (Approve)</button>
-          <button class="btn sm ghost" onclick="post(${b.id},'reject',null,'Sirf visit fee lagegi')">❌ Reject Quote (Only ₹99 Visit Fee)</button>
+          <button class="btn sm" onclick="post(${b.id},'approve',null,'Quote manzoor kiya! Kaam shuru ho raha hai.')">${ic('check', 14)} Manzoor hai (Approve)</button>
+          <button class="btn sm ghost" onclick="post(${b.id},'reject',null,'Sirf visit fee lagegi')">${ic('x', 14)} Reject Quote (₹99 Visit Fee)</button>
         </div>
       </div>
     ` : ''}
@@ -940,8 +971,8 @@ function bkc(b) {
     <!-- Payment action -->
     ${fin && !b.paid && !isCan ? (
       b.pay === 'razorpay'
-        ? `<button class="btn acc" style="margin-top:10px" onclick="onlinePay(${b.id})">${inr(b.total)} Online Pay Karo</button>`
-        : `<button class="btn acc" style="margin-top:10px" onclick="post(${b.id},'pay',null,'Payment ho gaya')">${inr(b.total)} Pay Karo (${b.pay === 'wallet' ? 'Wallet' : 'Cash'})</button>`
+        ? `<button class="btn acc" style="margin-top:10px" onclick="onlinePay(${b.id})">${ic('creditCard', 16)} ${inr(b.total)} Online Pay Karo</button>`
+        : `<button class="btn acc" style="margin-top:10px" onclick="post(${b.id},'pay',null,'Payment ho gaya')">${ic('wallet', 16)} ${inr(b.total)} Pay Karo (${b.pay === 'wallet' ? 'Wallet' : 'Cash'})</button>`
     ) : ''}
 
     <!-- Review & Rating for completed service -->
@@ -950,18 +981,18 @@ function bkc(b) {
         ${b.customer_rating ? `
           <div class="card" style="background:var(--soft);border:none;padding:10px 12px">
             <div class="row">
-              <b>${ic('star', 14, 1)} Aapka Review: ${b.customer_rating}/5</b>
+              <b style="display:flex;align-items:center;gap:5px">${ic('star', 14, true)} Aapka Review: ${b.customer_rating}/5</b>
               <span class="badge ok">Reviewed</span>
             </div>
             ${b.customer_comment ? `<div class="mut" style="font-size:12px;margin-top:4px">"${esc(b.customer_comment)}"</div>` : ''}
           </div>
         ` : `
           <button class="btn sm acc" style="width:100%" onclick="openReviewModal(${b.id})">
-            ⭐ Rating & Review Dein
+            ${ic('star', 15)} Rating & Review Dein
           </button>
         `}
-        <div class="mut" style="margin-top:6px;font-size:12px">
-          ${cx ? 'Sirf visit fee li gayi.' : '✅ 30 din ki warranty active hai.'}
+        <div class="mut" style="margin-top:6px;font-size:12px;display:flex;align-items:center;gap:5px">
+          ${cx ? 'Sirf visit fee li gayi.' : `${ic('shieldCheck', 14)} 30 din ki warranty active hai.`}
         </div>
       </div>
     ` : ''}
@@ -970,12 +1001,12 @@ function bkc(b) {
     ${(b.status === 'completed' || b.status === 'closed' || isCan) ? `
       <div class="row" style="margin-top:10px;gap:8px">
         ${(b.status === 'completed' || b.status === 'closed') ? `
-          <button class="btn sm ghost" style="flex:1.4;font-weight:700;color:var(--teal);border-color:var(--teal)" onclick="openInvoiceModal(${b.id})">
-            📄 Digital Invoice
+          <button class="btn sm ghost" style="flex:1.4;font-weight:700;color:var(--pri);border-color:var(--pri)" onclick="openInvoiceModal(${b.id})">
+            ${ic('fileText', 15)} Digital Invoice
           </button>
         ` : ''}
         <button class="btn sm acc" style="flex:1" onclick="repeatBooking(${b.id})">
-          🔁 Book Again
+          ${ic('repeat', 15)} Book Again
         </button>
       </div>
     ` : ''}
@@ -988,13 +1019,13 @@ function bkc(b) {
     ` : ''}
 
     ${(S.myComplaints || []).filter((c) => c.booking_id === b.id).map((c) => `
-      <div class="card" style="background:rgba(250,106,0,0.06);border-color:var(--orange);margin-top:8px;padding:8px 12px">
+      <div class="card" style="background:var(--warn-soft);border-color:var(--warn);margin-top:8px;padding:8px 12px">
         <div class="row">
           <b style="font-size:12px">Ticket #${c.id}: ${esc(c.category)}</b>
           <span class="adm-badge ${c.status}">${c.status}</span>
         </div>
         <div class="mut" style="font-size:11.5px;margin-top:3px">${esc(c.description)}</div>
-        ${c.resolution_notes ? `<div style="font-size:11.5px;color:var(--teal);margin-top:4px"><b>FixMate Resolution:</b> ${esc(c.resolution_notes)}</div>` : ''}
+        ${c.resolution_notes ? `<div style="font-size:11.5px;color:var(--pri);margin-top:4px"><b>FixMate Resolution:</b> ${esc(c.resolution_notes)}</div>` : ''}
         ${c.refund_amount ? `<div style="font-size:11.5px;color:var(--ok);font-weight:700">₹${c.refund_amount} refund aapke wallet mein jud gaya</div>` : ''}
       </div>
     `).join('')}
@@ -1002,14 +1033,8 @@ function bkc(b) {
 }
 
 function bk() {
-  return `<h2 style="font-size:22px;margin-top:20px">Bookings</h2>
-  ${S.B.length ? S.B.map(bkc).join('') : `
-    <div class="card mut" style="text-align:center;padding:28px">
-      ${ic('list', 36)}
-      <div style="margin-top:8px;font-size:15px">Abhi koi booking nahi hai.</div>
-      <button class="btn acc" style="margin-top:14px;max-width:220px" onclick="go('home')">Service Chuno</button>
-    </div>
-  `}`;
+  return `<h2 style="font-size:22px;margin-top:20px">My Bookings</h2>
+  ${S.B.length ? S.B.map(bkc).join('') : emptyBox('list', 'Abhi koi booking nahi hai', 'Apne ghar ke liye trusted technician book karein.', `<button class="btn acc" style="max-width:220px" onclick="go('home')">Service Chuno</button>`)}`;
 }
 
 /* ========================================================
@@ -1040,75 +1065,79 @@ function mo() {
    ======================================================== */
 function pf() {
   const u = S.user || { name: 'Customer', phone: '9876543210', id: 1 };
-  return `<button class="back" onclick="go('home')">← Wapas Home</button>
+  return `<button class="back" onclick="go('home')">${ic('arrowLeft', 16)} Wapas Home</button>
   <h2 style="font-size:22px">Aapka Profile</h2>
 
-  <div class="card row" style="justify-content:flex-start">
-    <div class="av">${esc(u.name[0].toUpperCase())}</div>
-    <div>
-      <b>${esc(u.name)}</b>
-      <div class="mut">+91 ${esc(u.phone)} • ${esc(u.role)}</div>
+  <div class="card row" style="justify-content:space-between">
+    <div class="row" style="justify-content:flex-start">
+      <div class="av">${esc(u.name[0].toUpperCase())}</div>
+      <div>
+        <b>${esc(u.name)}</b>
+        <div class="mut">+91 ${esc(u.phone)} • ${esc(u.role)}</div>
+      </div>
     </div>
+    <button class="btn sm ghost" onclick="theme()" title="Switch theme">${ic(isDarkTheme() ? 'sun' : 'moon', 15)} ${isDarkTheme() ? 'Light' : 'Dark'}</button>
   </div>
 
   <!-- Phase 8 Services & Account Hub -->
   <h2 style="margin-top:18px">Protection, Plans & Family</h2>
   <div class="hub-grid">
     <button class="hub-tile" onclick="openAmcModal()">
-      <span style="font-size:20px">🛡️</span>
+      <span class="hub-tile-ico">${ic('shieldCheck', 18)}</span>
       <b>AMC Annual Plans</b>
       <span class="mut">${(S.myAmcSubs || []).filter((x) => x.status === 'active').length} Active Plan(s)</span>
     </button>
     <button class="hub-tile" onclick="openWarrantyModal()">
-      <span style="font-size:20px">📜</span>
+      <span class="hub-tile-ico">${ic('award', 18)}</span>
       <b>Service Warranty</b>
       <span class="mut">History & Coverage</span>
     </button>
     <button class="hub-tile" onclick="openFamilyModal()">
-      <span style="font-size:20px">👨‍👩‍👧</span>
+      <span class="hub-tile-ico">${ic('users', 18)}</span>
       <b>Family Accounts</b>
       <span class="mut">${(S.familyMembers || []).length} Member(s)</span>
     </button>
     <button class="hub-tile" onclick="openRemindersModal()">
-      <span style="font-size:20px">⏰</span>
+      <span class="hub-tile-ico">${ic('clock', 18)}</span>
       <b>Service Reminders</b>
       <span class="mut">${(S.reminders || []).filter((r) => r.enabled).length} Scheduled</span>
     </button>
   </div>
-  <button class="btn sm ghost" style="margin-top:8px" onclick="openPincodeModal()">
-    📍 Check Serviceable Pincode Area (Dhanbad)
+  <button class="btn sm ghost" style="margin-top:10px" onclick="openPincodeModal()">
+    ${ic('pin', 15)} Check Serviceable Pincode Area (Dhanbad)
   </button>
 
   <div class="row" style="margin-top:20px">
     <h2 style="margin:0">Saved Addresses</h2>
-    <button class="btn sm" style="width:auto;padding:6px 14px;font-size:12px" onclick="openAddAddressModal()">+ Add New</button>
+    <button class="btn sm" style="width:auto;padding:7px 14px;font-size:12px" onclick="openAddAddressModal()">${ic('plus', 14)} Add New</button>
   </div>
 
   ${S.addresses.length ? S.addresses.map((a) => {
     const full = a.address_line + (a.landmark ? ', ' + a.landmark : '') + ', ' + a.city;
+    const addrIcon = a.label === 'Home' ? 'home' : (a.label === 'Work' ? 'building' : 'pin');
     return `<div class="addr-item ${S.ad === full ? 'selected' : ''}">
       <div>
-        <div style="font-weight:700;font-size:14px">${a.label === 'Home' ? '🏠' : a.label === 'Work' ? '🏢' : '📍'} ${esc(a.label)} ${a.is_default ? '<span class="badge ok" style="font-size:10px">Default</span>' : ''}</div>
+        <div style="font-weight:700;font-size:14px;display:flex;align-items:center;gap:6px">${ic(addrIcon, 15)} ${esc(a.label)} ${a.is_default ? '<span class="badge ok" style="font-size:10px">Default</span>' : ''}</div>
         <div class="mut" style="font-size:13px;margin-top:2px">${esc(a.address_line)}</div>
         <div class="mut" style="font-size:11px">${esc(a.landmark || '')} ${esc(a.city)} - ${esc(a.pincode)}</div>
       </div>
       <div style="display:flex;gap:6px">
-        <button class="btn sm ghost" style="width:auto;padding:4px 8px;font-size:11px" onclick="selectAddress(${JSON.stringify(a).replace(/"/g, '&quot;')})">Use</button>
-        <button class="btn sm ghost" style="width:auto;padding:4px 8px;font-size:11px;color:var(--bad)" onclick="deleteAddress(${a.id})">${ic('trash', 14)}</button>
+        <button class="btn sm ghost" style="width:auto;padding:4px 10px;font-size:11px" onclick="selectAddress(${JSON.stringify(a).replace(/"/g, '&quot;')})">Use</button>
+        <button class="btn sm ghost" style="width:auto;padding:4px 8px;font-size:11px;color:var(--bad)" onclick="deleteAddress(${a.id})" title="Delete address">${ic('trash', 14)}</button>
       </div>
     </div>`;
-  }).join('') : '<div class="card mut">Koi saved address nahi hai. "+ Add New" par tap karein.</div>'}
+  }).join('') : emptyBox('pin', 'Koi saved address nahi hai', '"+ Add New" par tap karke apna address save karein.')}
 
   <!-- Available Offers & Coupons -->
   <h2 style="margin-top:20px">Available Offers</h2>
   ${S.coupons.length ? S.coupons.map((c) => `
     <div class="card row" style="margin-bottom:8px">
       <div>
-        <b style="color:var(--sec)">${esc(c.code)}</b>
+        <b style="color:var(--pri)">${esc(c.code)}</b>
         <div class="mut" style="font-size:12px">${esc(c.title)}</div>
         <div class="mut" style="font-size:11px">Min order: ${inr(c.min_order_amount)} ${c.max_discount ? `• Max discount: ${inr(c.max_discount)}` : ''}</div>
       </div>
-      <button class="btn sm ghost" style="width:auto;padding:4px 12px;font-size:12px" onclick="copyCoupon('${esc(c.code)}')">Copy</button>
+      <button class="btn sm ghost" style="width:auto;padding:6px 12px;font-size:12px" onclick="copyCoupon('${esc(c.code)}')">${ic('copy', 13)} Copy</button>
     </div>
   `).join('') : '<div class="card mut">Abhi koi offer available nahi hai.</div>'}
 
@@ -1116,13 +1145,13 @@ function pf() {
   <div class="card row">
     <div>
       <div>Aapka Referral Code:</div>
-      <b style="font-size:18px;color:var(--teal)">FIX${String(u.id || 1).padStart(4, '0')}</b>
+      <b style="font-size:18px;color:var(--pri)">FIX${String(u.id || 1).padStart(4, '0')}</b>
       <div class="mut" style="font-size:12px">Dost ko pehli booking par ₹50 cashback, aur aapko bhi ₹50.</div>
     </div>
-    <button class="btn sm" style="width:auto;padding:8px 14px" onclick="copyCoupon('FIX${String(u.id || 1).padStart(4, '0')}')">Share</button>
+    <button class="btn sm" style="width:auto;padding:8px 14px" onclick="copyCoupon('FIX${String(u.id || 1).padStart(4, '0')}')">${ic('share', 14)} Share</button>
   </div>
 
-  <button class="btn acc" style="margin-top:20px" onclick="out()">Logout & Switch Account</button>`;
+  <button class="btn acc" style="margin-top:20px" onclick="out()">${ic('logOut', 16)} Logout & Switch Account</button>`;
 }
 
 /* ========================================================
@@ -1156,20 +1185,27 @@ function wk_jobs() {
   const open = S.B.filter((b) => b.status === 'requested');
   const mine = S.B.filter((b) => b.status !== 'requested' && b.status !== 'cancelled');
 
-  return `<div class="hd" style="margin-bottom:12px;border-radius:0 0 24px 24px">
+  return `<div class="hd" style="margin-bottom:14px">
     <div class="row">
       <div>
-        <b style="font-size:20px">${esc(u.name)}</b>
-        <div style="font-size:12.5px;opacity:0.9">${esc(u.skill)} Expert • ⭐ ${S.wkStats.avg_rating || 4.8}</div>
+        <div style="margin-bottom:4px">${fmLogo({ size: 28, onDark: true })}</div>
+        <b style="font-size:19px">${esc(u.name)}</b>
+        <div style="font-size:12.5px;opacity:0.9;display:flex;align-items:center;gap:6px">${esc(u.skill)} Expert • ${ic('star', 13, true)} ${S.wkStats.avg_rating || 4.8}</div>
       </div>
-      <button class="ic" onclick="out()" aria-label="Logout">${ic('user', 18)}</button>
+      <div class="ics">
+        <button class="ic" onclick="theme()" title="Toggle theme" aria-label="Toggle theme">${ic(isDarkTheme() ? 'sun' : 'moon', 18)}</button>
+        <button class="ic" onclick="out()" title="Logout" aria-label="Logout">${ic('logOut', 18)}</button>
+      </div>
     </div>
   </div>
 
   <!-- Availability Card -->
   <div class="wk-online-card">
     <div>
-      <b style="font-size:15px">${on ? '🟢 Online (Jobs Active)' : '⚪ Offline (Duty Off)'}</b>
+      <b style="font-size:15px;display:flex;align-items:center;gap:7px">
+        <span style="width:9px;height:9px;border-radius:50%;background:${on ? 'var(--ok)' : 'var(--mut)'}"></span>
+        ${on ? 'Online (Jobs Active)' : 'Offline (Duty Off)'}
+      </b>
       <div class="mut" style="font-size:12px">${on ? 'Naye customer booking requests mil rahe hain' : 'Toggle karein job requests paane ke liye'}</div>
     </div>
     <button class="tg ${on ? 'on' : ''}" onclick="setOnline(${!on})" aria-label="Online toggle"></button>
@@ -1194,43 +1230,29 @@ function wk_jobs() {
   <!-- Section: Incoming Job Requests -->
   <h2 style="font-size:18px;margin:16px 0 8px">Naye Requests (${open.length})</h2>
   ${on ? (
-    open.length ? open.map(wreqCard).join('') : `
-      <div class="card mut" style="text-align:center;padding:20px">
-        ${ic('tool', 28)}
-        <div style="margin-top:6px;font-size:13px">Abhi koi naya request nahi mila. Jaise hi koi customer book karega, yahan dikhai dega.</div>
-      </div>
-    `
-  ) : `
-    <div class="card mut" style="text-align:center;padding:16px">
-      Aap Offline hain. Naye jobs dekhne ke liye Online switch on karein.
-    </div>
-  `}
+    open.length ? open.map(wreqCard).join('') : emptyBox('tool', 'Koi naya request nahi', 'Jaise hi koi customer book karega, yahan dikhai dega.')
+  ) : `<div class="fm-alert warning">${ic('alertTriangle', 16)} Aap Offline hain. Naye jobs dekhne ke liye Online switch on karein.</div>`}
 
   <!-- Section: Assigned Active Jobs -->
   <h2 style="font-size:18px;margin:20px 0 8px">Mere Active Jobs (${mine.length})</h2>
-  ${mine.length ? mine.map(wcard).join('') : `
-    <div class="card mut" style="text-align:center;padding:20px">
-      ${ic('check', 28)}
-      <div style="margin-top:6px;font-size:13px">Abhi koi assigned job nahi hai. Naye request accept karein.</div>
-    </div>
-  `}`;
+  ${mine.length ? mine.map(wcard).join('') : emptyBox('checkCircle', 'Koi assigned job nahi', 'Naye request accept karein ya Admin assignment ka intezaar karein.')}`;
 }
 
 function wreqCard(b) {
   return `<div class="job-req-card">
     <div class="row">
       <b style="font-size:15px">${esc(b.service)}</b>
-      <span class="badge" style="background:#FEF3C7;color:#D97706">Naya Request</span>
+      <span class="badge warn">Naya Request</span>
     </div>
     <div class="job-meta-row">
       <span>${ic('pin', 14)} ${esc(b.address)}</span>
       <span>${ic('clock', 14)} ${esc(b.slot)}</span>
     </div>
-    ${b.is_emergency ? `<div class="badge" style="background:#FEE2E2;color:#DC2626;margin-bottom:8px">🚨 Urgent Emergency Booking</div>` : ''}
+    ${b.is_emergency ? `<div class="badge bad" style="margin-bottom:8px">${ic('alertTriangle', 12)} Urgent Emergency Booking</div>` : ''}
     ${b.issue_desc ? `<div class="card" style="background:var(--soft);border:none;padding:8px 10px;margin-bottom:8px;font-size:12.5px"><b>Dikkat:</b> ${esc(b.issue_desc)}</div>` : ''}
     ${b.photo_url ? `<img src="${b.photo_url}" class="photo-preview-thumb" style="max-height:100px;margin-bottom:8px" alt="Customer issue photo">` : ''}
     <div class="row" style="margin-top:8px">
-      <button class="btn sm acc" style="flex:2" onclick="post(${b.id},'accept',null,'Job accept kiya!')">✅ Accept Job</button>
+      <button class="btn sm acc" style="flex:2" onclick="post(${b.id},'accept',null,'Job accept kiya!')">${ic('checkCircle', 15)} Accept Job</button>
       <button class="btn sm ghost" style="flex:1" onclick="toast('Job pass kar diya')">Pass</button>
     </div>
   </div>`;
@@ -1255,24 +1277,24 @@ function wcard(b) {
     <!-- Quick Navigation & Call Buttons -->
     <div class="row" style="margin-bottom:10px">
       <a href="${b.customer_lat && b.customer_lng ? `https://www.openstreetmap.org/?mlat=${b.customer_lat}&mlon=${b.customer_lng}#map=16/${b.customer_lat}/${b.customer_lng}` : `https://www.google.com/maps/search/?api=1&query=${mapQuery}`}" target="_blank" rel="noopener" class="btn sm ghost" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px">
-        ${ic('pin', 14)} Navigate
+        ${ic('nav', 14)} Navigate
       </a>
       ${b.contact_phone ? `
-        <a href="tel:${esc(b.contact_phone)}" class="btn sm" style="text-decoration:none;background:var(--sec);color:#fff;display:inline-flex;align-items:center;justify-content:center;gap:6px">
+        <a href="tel:${esc(b.contact_phone)}" class="btn sm sec" style="text-decoration:none">
           ${ic('phone', 14)} Call Customer
         </a>
       ` : ''}
     </div>
 
     ${['assigned', 'on_the_way', 'inspecting', 'quoted', 'in_progress'].includes(a) ? `
-      <div class="card" style="background:${S.wkSharingBookingId === b.id || b.tracking_active ? 'rgba(47,158,122,0.08)' : 'var(--soft)'};border-color:${S.wkSharingBookingId === b.id || b.tracking_active ? 'var(--teal)' : 'var(--bd)'};padding:10px 12px;margin-bottom:10px">
+      <div class="card" style="background:${S.wkSharingBookingId === b.id || b.tracking_active ? 'var(--ok-soft)' : 'var(--soft)'};border-color:${S.wkSharingBookingId === b.id || b.tracking_active ? 'var(--ok)' : 'var(--bd)'};padding:10px 12px;margin-bottom:10px">
         <div class="row">
           <div style="font-size:12px">
-            <b>${S.wkSharingBookingId === b.id || b.tracking_active ? '🟢 Live Location Sharing Active' : '📍 Share Live Location'}</b>
+            <b style="display:flex;align-items:center;gap:6px">${ic('radio', 15)} ${S.wkSharingBookingId === b.id || b.tracking_active ? 'Live Location Sharing Active' : 'Share Live Location'}</b>
             <div class="mut" style="font-size:11px">Sirf is active job ke dauran customer ko live map & ETA dikhega.</div>
           </div>
           <button class="btn sm ${S.wkSharingBookingId === b.id ? 'ghost' : 'acc'}" style="width:auto;padding:6px 12px;font-size:11.5px" onclick="toggleWorkerLocationSharing(${b.id})">
-            ${S.wkSharingBookingId === b.id ? '⏹️ Stop GPS' : '📡 Share GPS'}
+            ${S.wkSharingBookingId === b.id ? `${ic('stopCircle', 14)} Stop GPS` : `${ic('locate', 14)} Share GPS`}
           </button>
         </div>
       </div>
@@ -1281,7 +1303,7 @@ function wcard(b) {
     <!-- Lifecycle Actions -->
     ${a === 'assigned' ? `
       <button class="btn acc" onclick="post(${b.id},'on-the-way',null,'Customer ko notify kiya: Aap raste mein hain')">
-        🛵 Main Nikal Gaya (On The Way)
+        ${ic('nav', 16)} Main Nikal Gaya (On The Way)
       </button>
     ` : ''}
 
@@ -1290,12 +1312,12 @@ function wcard(b) {
         <div style="font-weight:700;font-size:13px;margin-bottom:4px">Customer ke ghar pahunch kar 4-digit code daalein:</div>
         <input id="c${b.id}" type="tel" inputmode="numeric" maxlength="4" placeholder="----" style="font-size:24px;letter-spacing:8px;text-align:center;font-weight:800;margin:6px 0">
         
-        <label class="btn sm ghost" style="display:block;margin:6px 0;cursor:pointer">
+        <label class="btn sm ghost" style="display:flex;margin:6px 0;cursor:pointer">
           <input type="file" accept="image/*" style="display:none" onchange="onWorkerStartPhoto(event, ${b.id})">
-          ${S.wkStartPhotos[b.id] ? '📷 Start Photo Proof Attached' : '📷 Start Photo Proof (Optional)'}
+          ${ic('camera', 15)} ${S.wkStartPhotos[b.id] ? 'Start Photo Proof Attached' : 'Start Photo Proof (Optional)'}
         </label>
         
-        <button class="btn acc" onclick="workerStartJob(${b.id})">Code Verify & Kaam Shuru</button>
+        <button class="btn acc" onclick="workerStartJob(${b.id})">${ic('checkCircle', 16)} Code Verify & Kaam Shuru</button>
       </div>
     ` : ''}
 
@@ -1306,41 +1328,43 @@ function wcard(b) {
         <input id="q${b.id}" type="number" min="0" placeholder="Spare parts ka kharcha (₹), 0 agar koi part nahi" style="margin-bottom:8px">
         <input id="qd${b.id}" type="text" placeholder="Spare parts details (e.g. Capacitor, copper pipe)" style="margin-bottom:8px">
         <button class="btn acc" onclick="post(${b.id},'quote',{parts:+$('q${b.id}').value||0,parts_desc:($('qd${b.id}')?.value||'').trim()||null},'Quote bhej diya! Customer approval ka intezaar karein.')">
-          Quote Bhejo (Customer Approval)
+          ${ic('send', 15)} Quote Bhejo (Customer Approval)
         </button>
       </div>
     ` : ''}
 
     ${a === 'quoted' ? `
-      <div class="card" style="background:rgba(250,106,0,0.06);border-color:var(--sec);margin-top:10px">
-        <div style="font-weight:700;color:var(--sec);font-size:13px">⏳ Customer Approval Pending</div>
-        <div class="mut" style="font-size:12px;margin-top:4px">Quote Total: <b>${inr(b.total)}</b> (Service: ${inr(b.price)} + Parts: ${inr(b.parts)})</div>
-        <div class="mut" style="font-size:11px">Customer app par quote manzoor hone par status apne aap update hoga.</div>
+      <div class="fm-alert warning" style="margin-top:10px">
+        ${ic('clock', 16)}
+        <div>
+          <b>Customer Approval Pending</b>
+          <div style="font-size:12px;margin-top:2px">Quote Total: <b>${inr(b.total)}</b> (Service: ${inr(b.price)} + Parts: ${inr(b.parts)})</div>
+        </div>
       </div>
     ` : ''}
 
     ${a === 'in_progress' ? `
       <div class="job-step-box">
-        <div style="font-weight:700;font-size:13px;color:var(--teal)">🛠️ Kaam Chal Raha Hai</div>
+        <div style="font-weight:700;font-size:13px;color:var(--pri);display:flex;align-items:center;gap:6px">${ic('tool', 15)} Kaam Chal Raha Hai</div>
         <div class="mut" style="font-size:12px;margin:4px 0 8px">Kaam khatam hone par final photo attach karein aur complete mark karein:</div>
         
-        <label class="btn sm ghost" style="display:block;margin:6px 0;cursor:pointer">
+        <label class="btn sm ghost" style="display:flex;margin:6px 0;cursor:pointer">
           <input type="file" accept="image/*" style="display:none" onchange="onWorkerCompletePhoto(event, ${b.id})">
-          ${S.wkCompletePhotos[b.id] ? '📷 Completion Photo Proof Attached' : '📷 Completion Photo Proof (Optional)'}
+          ${ic('camera', 15)} ${S.wkCompletePhotos[b.id] ? 'Completion Photo Proof Attached' : 'Completion Photo Proof (Optional)'}
         </label>
         
-        <button class="btn acc" onclick="workerCompleteJob(${b.id})">✅ Kaam Poora Hua (Mark Complete)</button>
+        <button class="btn acc" onclick="workerCompleteJob(${b.id})">${ic('checkCircle', 16)} Kaam Poora Hua (Mark Complete)</button>
       </div>
     ` : ''}
 
     ${a === 'completed' || a === 'closed' ? `
       <div class="card" style="background:var(--soft);border:none;margin-top:10px;padding:10px 12px">
-        <b>${b.paid ? '✅ Payment Received!' : '⏳ Payment Pending'}</b>
+        <b style="display:flex;align-items:center;gap:6px">${ic(b.paid ? 'checkCircle' : 'clock', 15)} ${b.paid ? 'Payment Received!' : 'Payment Pending'}</b>
         <div class="mut" style="font-size:12px;margin-top:2px">
           ${b.paid ? `Aapka hissa ${inr(Math.round(b.total * 0.85))} FixMate wallet mein jud chuka hai.` : `Customer dwara ${inr(b.total)} ka payment pending hai.`}
         </div>
         <button class="btn sm ghost" style="margin-top:8px;width:100%" onclick="openInvoiceModal(${b.id})">
-          📄 View Job Invoice & Breakdown
+          ${ic('fileText', 15)} View Job Invoice & Breakdown
         </button>
       </div>
     ` : ''}
@@ -1398,15 +1422,14 @@ function workerCompleteJob(id) {
 }
 
 function wk_earnings() {
-  const u = S.user;
-  return `<div class="hd" style="border-radius:0 0 24px 24px;margin-bottom:14px">
+  return `<div class="hd" style="margin-bottom:14px">
     <div>Kamai & Wallet</div>
     <b style="font-size:34px">${inr(S.w)}</b>
     <div style="font-size:13px;opacity:0.9;margin-top:4px">Total Lifetime Kamai: ${inr(S.wkStats.total_earnings || S.w)}</div>
   </div>
 
-  <div class="card" style="border-left:4px solid var(--teal)">
-    <div style="font-weight:800;font-size:15px;color:var(--teal)">💰 FixMate Partner Payout Model</div>
+  <div class="card" style="border-left:4px solid var(--pri)">
+    <div style="font-weight:800;font-size:15px;color:var(--pri);display:flex;align-items:center;gap:6px">${ic('wallet', 16)} FixMate Partner Payout Model</div>
     <div class="row" style="margin-top:8px">
       <span>Technician Share (Aapka Hissa)</span>
       <b style="color:var(--ok)">85%</b>
@@ -1429,7 +1452,7 @@ function wk_earnings() {
         ${t[1] < 0 ? '-' : '+'}${inr(Math.abs(t[1]))}
       </b>
     </div>
-  `).join('') : '<div class="card mut">Abhi koi transaction nahi hai.</div>'}`;
+  `).join('') : emptyBox('wallet', 'Abhi koi transaction nahi hai', 'Completed jobs ke payouts yahan dikhenge.')}`;
 }
 
 function wk_reviews() {
@@ -1439,12 +1462,12 @@ function wk_reviews() {
   return `<h2 style="font-size:22px;margin-top:20px">Ratings & Customer Reviews</h2>
   
   <div class="card" style="text-align:center;padding:24px 16px;margin-bottom:16px">
-    <div style="font-size:42px;font-weight:800;color:var(--sec);line-height:1">${rating}</div>
+    <div style="font-size:42px;font-weight:800;color:var(--pri);line-height:1">${rating}</div>
     <div class="star-rating-row" style="margin:8px 0">
-      ${[1, 2, 3, 4, 5].map((s) => `<span style="font-size:22px;color:${s <= Math.round(rating) ? '#F59E0B' : '#CBD5E1'}">★</span>`).join('')}
+      ${[1, 2, 3, 4, 5].map((s) => `<span style="color:${s <= Math.round(rating) ? '#F59E0B' : '#CBD5E1'}">${ic('star', 20, s <= Math.round(rating))}</span>`).join('')}
     </div>
     <div class="mut" style="font-size:13px">${count} Verified Customer Reviews</div>
-    <div class="badge ok" style="display:inline-block;margin-top:10px">Top Rated Technician</div>
+    <div class="badge ok" style="margin-top:10px">${ic('award', 13)} Top Rated Technician</div>
   </div>
 
   <h2 style="font-size:18px;margin-bottom:10px">Customer Feedback</h2>
@@ -1452,16 +1475,12 @@ function wk_reviews() {
     <div class="card" style="margin-bottom:10px">
       <div class="row">
         <b>${esc(r.customer_name || 'Customer')}</b>
-        <span class="badge" style="background:#FEF3C7;color:#D97706">⭐ ${r.rating}/5</span>
+        <span class="badge warn">${ic('star', 12, true)} ${r.rating}/5</span>
       </div>
       <div class="mut" style="font-size:11.5px;margin:2px 0 6px">${esc(r.service_name || 'Service')}</div>
       ${r.comment ? `<div style="font-size:13px;line-height:1.4">"${esc(r.comment)}"</div>` : '<div class="mut" style="font-size:12px">Rating di gayi</div>'}
     </div>
-  `).join('') : `
-    <div class="card mut" style="text-align:center;padding:20px">
-      Abhi koi review nahi mila. Completed jobs ke baad customer feedback yahan aayega.
-    </div>
-  `}`;
+  `).join('') : emptyBox('star', 'Abhi koi review nahi mila', 'Completed jobs ke baad customer feedback yahan aayega.')}`;
 }
 
 function wk_profile() {
@@ -1469,12 +1488,12 @@ function wk_profile() {
   return `<h2 style="font-size:22px;margin-top:20px">Technician Profile & Verification</h2>
 
   <div class="card row" style="justify-content:flex-start;margin-bottom:14px">
-    <div class="av" style="background:var(--teal)">${esc((u.name || 'W')[0].toUpperCase())}</div>
+    <div class="av">${esc((u.name || 'W')[0].toUpperCase())}</div>
     <div>
       <b style="font-size:16px">${esc(u.name)}</b>
       <div class="mut">+91 ${esc(u.phone)}</div>
       <div style="margin-top:4px">
-        ${u.id_verified ? '<span class="badge ok">🛡️ FixMate Verified Pro</span>' : '<span class="badge" style="background:#FEF3C7;color:#D97706">⚠️ Verification In Review</span>'}
+        ${u.id_verified ? `<span class="badge ok">${ic('shieldCheck', 12)} FixMate Verified Pro</span>` : `<span class="badge warn">${ic('alertTriangle', 12)} Verification In Review</span>`}
       </div>
     </div>
   </div>
@@ -1483,7 +1502,7 @@ function wk_profile() {
     <h3 style="margin:0 0 12px;font-size:16px">Profile Information</h3>
     
     <label style="font-size:13px;font-weight:700">Kaam ka prakar (Skill / Category)</label>
-    <select id="wk-skill" style="margin:6px 0 12px;padding:12px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
+    <select id="wk-skill" style="margin:6px 0 12px">
       ${CATS.map((c) => `<option value="${c}" ${u.skill === c ? 'selected' : ''}>${c}</option>`).join('')}
     </select>
 
@@ -1493,11 +1512,11 @@ function wk_profile() {
     <label style="font-size:13px;font-weight:700">Service Areas in Dhanbad</label>
     <input id="wk-areas" placeholder="e.g. Saraidhela, Bank More, Hirapur, Katras" value="${esc(u.service_areas || 'All Dhanbad')}" style="margin:6px 0 14px">
 
-    <button class="btn acc" onclick="saveWorkerProfile()">Save Profile Changes</button>
+    <button class="btn acc" onclick="saveWorkerProfile()">${ic('checkCircle', 16)} Save Profile Changes</button>
   </div>
 
   <button class="btn ghost" style="margin-top:16px;color:var(--bad);width:100%" onclick="out()">
-    Logout & Switch Account
+    ${ic('logOut', 16)} Logout & Switch Account
   </button>`;
 }
 
@@ -1655,22 +1674,23 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h3>Delivery Address Chunein</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('pin', 18)} Service Address Chunein</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         ${S.addresses.length ? S.addresses.map((a) => {
           const full = a.address_line + (a.landmark ? ', ' + a.landmark : '') + ', ' + a.city;
           const isSel = S.ad === full;
+          const addrIcon = a.label === 'Home' ? 'home' : (a.label === 'Work' ? 'building' : 'pin');
           return `<div class="addr-item ${isSel ? 'selected' : ''}" onclick="selectAddress(${JSON.stringify(a).replace(/"/g, '&quot;')})">
             <div>
-              <b style="font-size:14px">${a.label === 'Home' ? '🏠' : a.label === 'Work' ? '🏢' : '📍'} ${esc(a.label)}</b>
+              <b style="font-size:14px;display:flex;align-items:center;gap:6px">${ic(addrIcon, 14)} ${esc(a.label)}</b>
               <div class="mut" style="font-size:13px">${esc(a.address_line)}</div>
               <div class="mut" style="font-size:11px">${esc(a.landmark || '')} ${esc(a.city)}</div>
             </div>
             ${isSel ? '<span class="badge ok">Selected</span>' : '<button class="btn sm ghost" style="width:auto;padding:4px 10px;font-size:11px">Chuno</button>'}
           </div>`;
         }).join('') : '<div class="card mut">Abhi koi address save nahi hai.</div>'}
-        <button class="btn acc" style="margin-top:14px" onclick="openAddAddressModal()">+ Naya Address Jodein</button>
+        <button class="btn acc" style="margin-top:14px" onclick="openAddAddressModal()">${ic('plus', 16)} Naya Address Jodein</button>
       </div>
     </div>`;
   }
@@ -1679,14 +1699,14 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h3>Naya Address Jodein</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('pin', 18)} Naya Address Jodein</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         <label style="font-size:13px;font-weight:700">Type</label>
-        <select id="new-addr-label" style="margin:6px 0 12px;padding:12px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
-          <option value="Home">🏠 Home</option>
-          <option value="Work">🏢 Office / Work</option>
-          <option value="Other">📍 Other</option>
+        <select id="new-addr-label" style="margin:6px 0 12px">
+          <option value="Home">Home</option>
+          <option value="Work">Office / Work</option>
+          <option value="Other">Other</option>
         </select>
         <label style="font-size:13px;font-weight:700">Pata (House No, Building, Gali)</label>
         <input id="new-addr-line" placeholder="e.g. Flat 302, Green Valley Apartments" style="margin:6px 0 12px">
@@ -1706,7 +1726,7 @@ function renderModal() {
           <input type="checkbox" id="new-addr-def" checked style="width:auto;margin:0">
           <span style="font-size:13px">Default address banayein</span>
         </label>
-        <button class="btn acc" onclick="saveNewAddress()">Save Karein</button>
+        <button class="btn acc" onclick="saveNewAddress()">${ic('checkCircle', 16)} Save Karein</button>
       </div>
     </div>`;
   }
@@ -1715,18 +1735,18 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h3>Time Slot Badlein (Reschedule)</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('clock', 18)} Time Slot Badlein (Reschedule)</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         <div class="mut" style="font-size:13px;margin-bottom:14px">Apni suvidha ke anusaar naya time slot chunein:</div>
         <div class="chips" style="flex-direction:column;gap:8px;overflow:visible">
           ${SL.map((s) => `
-            <button class="chip ${S.rescheduleSlot === s ? 'on' : ''}" style="width:100%;text-align:left;padding:12px 16px" onclick="S.rescheduleSlot='${esc(s)}';render()">
-              ${esc(s)}
+            <button class="chip ${S.rescheduleSlot === s ? 'on' : ''}" style="width:100%;justify-content:flex-start;padding:12px 16px" onclick="S.rescheduleSlot='${esc(s)}';render()">
+              ${ic('clock', 14)} ${esc(s)}
             </button>
           `).join('')}
         </div>
-        <button class="btn acc" style="margin-top:16px" onclick="submitReschedule()">Reschedule Confirm Karein</button>
+        <button class="btn acc" style="margin-top:16px" onclick="submitReschedule()">${ic('checkCircle', 16)} Reschedule Confirm Karein</button>
       </div>
     </div>`;
   }
@@ -1735,19 +1755,19 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h3>Service Rating & Feedback</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('star', 18)} Service Rating & Feedback</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         <div class="mut" style="text-align:center;font-size:13px">Kaam kaisa laga? Star rating chunein:</div>
         <div class="star-rating-row">
           ${[1, 2, 3, 4, 5].map((r) => `
-            <button class="star-btn ${S.reviewRating >= r ? 'active' : ''}" onclick="setReviewRating(${r})">★</button>
+            <button class="star-btn ${S.reviewRating >= r ? 'active' : ''}" onclick="setReviewRating(${r})" aria-label="${r} stars">${ic('star', 28, S.reviewRating >= r)}</button>
           `).join('')}
         </div>
-        <div style="text-align:center;font-weight:800;color:var(--sec);margin-bottom:12px">${S.reviewRating}/5 Stars</div>
+        <div style="text-align:center;font-weight:800;color:var(--pri);margin-bottom:12px">${S.reviewRating}/5 Stars</div>
         <label style="font-size:13px;font-weight:700">Aapka Anubhav / Review</label>
-        <textarea id="review-comment" placeholder="Worker ka kaam, time aur vyavhaar kaisa tha? (e.g. Bohot jaldi aur acche se solve kiya)" rows="3" style="width:100%;padding:12px;border-radius:14px;border:1.5px solid var(--bd);background:var(--card);color:var(--ink);font:inherit;margin:6px 0 16px"></textarea>
-        <button class="btn acc" onclick="submitReview()">Review Submit Karein</button>
+        <textarea id="review-comment" placeholder="Worker ka kaam, time aur vyavhaar kaisa tha?" rows="3" style="margin:6px 0 16px"></textarea>
+        <button class="btn acc" onclick="submitReview()">${ic('send', 16)} Review Submit Karein</button>
       </div>
     </div>`;
   }
@@ -1756,11 +1776,11 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h3>⚠️ Shikayat / Report Issue</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('alertTriangle', 18)} Shikayat / Report Issue</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         <label style="font-size:13px;font-weight:700">Issue Category</label>
-        <select id="comp-cat" style="margin:6px 0 12px;padding:12px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
+        <select id="comp-cat" style="margin:6px 0 12px">
           <option value="Quality of Work">Quality of Work (Kaam sahi se nahi hua)</option>
           <option value="Delay in Service">Delay in Service (Worker late aaya)</option>
           <option value="Technician Behavior">Technician Behavior (Vyavhaar sahi nahi tha)</option>
@@ -1769,12 +1789,12 @@ function renderModal() {
           <option value="Other">Other / Any other issue</option>
         </select>
         <label style="font-size:13px;font-weight:700">Dikkat ka vistaar se vivaran (Description)</label>
-        <textarea id="comp-desc" placeholder="Apni dikkat vistaar se batayein taaki admin team iska jaldi samadhan kar sake..." rows="4" style="width:100%;padding:12px;border-radius:14px;border:1.5px solid var(--bd);background:var(--card);color:var(--ink);font:inherit;margin:6px 0 12px"></textarea>
+        <textarea id="comp-desc" placeholder="Apni dikkat vistaar se batayein taaki admin team iska jaldi samadhan kar sake..." rows="4" style="margin:6px 0 12px"></textarea>
         <label class="row" style="justify-content:flex-start;gap:8px;margin-bottom:16px;cursor:pointer">
           <input type="checkbox" id="comp-refund" checked style="width:auto;margin:0">
           <span style="font-size:13px">Mujhe is booking ka refund chahiye</span>
         </label>
-        <button class="btn acc" onclick="submitComplaint()">Ticket Darj Karein</button>
+        <button class="btn acc" onclick="submitComplaint()">${ic('send', 16)} Ticket Darj Karein</button>
       </div>
     </div>`;
   }
@@ -1785,15 +1805,15 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h3>Manual Technician Assignment</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('userCheck', 18)} Manual Technician Assignment</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         <div class="mut" style="font-size:13px;margin-bottom:10px">Booking #${b?.id || ''}: <b>${esc(b?.service_name || '')}</b> (${esc(b?.customer_name || '')})</div>
         <label style="font-size:13px;font-weight:700">Available Technician Chunein:</label>
-        <select id="adm-assign-worker" style="margin:6px 0 16px;padding:12px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
-          ${techList.map((w) => `<option value="${w.id}">${esc(w.name)} (${esc(w.skill || 'General')}) - ${w.online ? '🟢 Online' : '⚪ Offline'} ${w.id_verified ? '⭐ Verified' : ''}</option>`).join('')}
+        <select id="adm-assign-worker" style="margin:6px 0 16px">
+          ${techList.map((w) => `<option value="${w.id}">${esc(w.name)} (${esc(w.skill || 'General')}) - ${w.online ? 'Online' : 'Offline'}${w.id_verified ? ' • Verified' : ''}</option>`).join('')}
         </select>
-        <button class="btn acc" onclick="submitAdminAssign()">Technician Assign Karein</button>
+        <button class="btn acc" onclick="submitAdminAssign()">${ic('checkCircle', 16)} Technician Assign Karein</button>
       </div>
     </div>`;
   }
@@ -1803,8 +1823,8 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h3>Resolve Ticket #${c?.id || ''}</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('checkCircle', 18)} Resolve Ticket #${c?.id || ''}</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         <div class="card" style="background:var(--soft);border:none;margin-bottom:12px;font-size:12px">
           <b>Customer:</b> ${esc(c?.customer_name || '')} (${esc(c?.customer_phone || '')})<br>
@@ -1812,16 +1832,16 @@ function renderModal() {
           <b>Issue:</b> "${esc(c?.description || '')}"
         </div>
         <label style="font-size:13px;font-weight:700">Status</label>
-        <select id="adm-res-status" style="margin:6px 0 12px;padding:12px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
+        <select id="adm-res-status" style="margin:6px 0 12px">
           <option value="resolved">Resolved (Samasya hal ho gayi)</option>
           <option value="in_investigation">In Investigation (Jaanch chal rahi hai)</option>
           <option value="closed">Closed (Ticket band)</option>
         </select>
         <label style="font-size:13px;font-weight:700">Resolution Notes (Customer ke liye sandesh)</label>
-        <textarea id="adm-res-notes" rows="3" style="width:100%;padding:12px;border-radius:14px;border:1.5px solid var(--bd);background:var(--card);color:var(--ink);font:inherit;margin:6px 0 12px" placeholder="e.g. Apology accepted and refund credited to wallet."></textarea>
+        <textarea id="adm-res-notes" rows="3" style="margin:6px 0 12px" placeholder="e.g. Apology accepted and refund credited to wallet."></textarea>
         <label style="font-size:13px;font-weight:700">Wallet Refund Amount (₹)</label>
         <input id="adm-res-refund" type="number" min="0" max="5000" placeholder="0 agar refund nahi dena" style="margin:6px 0 16px">
-        <button class="btn acc" onclick="submitAdminResolve()">Submit Resolution & Refund</button>
+        <button class="btn acc" onclick="submitAdminResolve()">${ic('checkCircle', 16)} Submit Resolution & Refund</button>
       </div>
     </div>`;
   }
@@ -1830,18 +1850,18 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h3>Nayi Service Catalog Mein Jodein</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('plus', 18)} Nayi Service Catalog Mein Jodein</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         <label style="font-size:13px;font-weight:700">Category</label>
-        <select id="new-svc-cat" style="margin:6px 0 12px;padding:12px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
+        <select id="new-svc-cat" style="margin:6px 0 12px">
           ${CATS.map((c) => `<option value="${c}">${c}</option>`).join('')}
         </select>
         <label style="font-size:13px;font-weight:700">Service ka Naam</label>
         <input id="new-svc-name" placeholder="e.g. Inverter battery acid top-up" style="margin:6px 0 12px">
         <label style="font-size:13px;font-weight:700">Base Price (₹)</label>
         <input id="new-svc-price" type="number" min="1" max="100000" placeholder="e.g. 299" style="margin:6px 0 16px">
-        <button class="btn acc" onclick="submitAdminAddService()">Service Add Karein</button>
+        <button class="btn acc" onclick="submitAdminAddService()">${ic('plus', 16)} Service Add Karein</button>
       </div>
     </div>`;
   }
@@ -1851,13 +1871,13 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h3>Service Price Update</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('edit', 18)} Service Price Update</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         <div class="mut" style="font-size:13px;margin-bottom:12px"><b>${esc(svc?.name || '')}</b> (${esc(svc?.cat || '')})</div>
         <label style="font-size:13px;font-weight:700">Naya Price (₹)</label>
         <input id="edit-svc-price" type="number" min="1" max="100000" value="${svc?.price || ''}" style="margin:6px 0 16px">
-        <button class="btn acc" onclick="submitAdminEditPrice()">Price Save Karein</button>
+        <button class="btn acc" onclick="submitAdminEditPrice()">${ic('checkCircle', 16)} Price Save Karein</button>
       </div>
     </div>`;
   }
@@ -1866,8 +1886,8 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h3>Naya Promo Coupon Create Karein</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('tag', 18)} Naya Promo Coupon Create Karein</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         <label style="font-size:13px;font-weight:700">Coupon Code</label>
         <input id="new-cpn-code" placeholder="e.g. FESTIVE100" style="margin:6px 0 12px;text-transform:uppercase">
@@ -1876,7 +1896,7 @@ function renderModal() {
         <div class="row">
           <div style="flex:1">
             <label style="font-size:13px;font-weight:700">Discount Type</label>
-            <select id="new-cpn-type" style="margin:6px 0 12px;padding:12px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
+            <select id="new-cpn-type" style="margin:6px 0 12px">
               <option value="flat">Flat (₹)</option>
               <option value="percentage">Percentage (%)</option>
             </select>
@@ -1888,7 +1908,7 @@ function renderModal() {
         </div>
         <label style="font-size:13px;font-weight:700">Minimum Order Amount (₹)</label>
         <input id="new-cpn-min" type="number" placeholder="400" style="margin:6px 0 16px">
-        <button class="btn acc" onclick="submitAdminAddCoupon()">Coupon Create Karein</button>
+        <button class="btn acc" onclick="submitAdminAddCoupon()">${ic('plus', 16)} Coupon Create Karein</button>
       </div>
     </div>`;
   }
@@ -1900,10 +1920,10 @@ function renderModal() {
       <div class="modal-sheet invoice-sheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto;padding:20px">
         <div class="modal-header" style="margin-bottom:12px;display:flex;align-items:flex-start;justify-content:space-between">
           <div>
-            <h3 style="margin:0;font-size:18px">🧾 FixMate Tax Invoice</h3>
-            <div class="mut" style="font-size:11px">${esc(inv.invoice_number)} · Date: ${esc(inv.date)} · ${inv.paid ? '✅ PAID' : '⏳ UNPAID'}</div>
+            <h3 style="margin:0;font-size:18px">${ic('fileText', 18)} FixMate Tax Invoice</h3>
+            <div class="mut" style="font-size:11px;margin-top:2px">${esc(inv.invoice_number)} · Date: ${esc(inv.date)} · ${inv.paid ? 'PAID' : 'UNPAID'}</div>
           </div>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:var(--soft);padding:12px;border-radius:12px;margin-bottom:14px;font-size:12px">
@@ -1917,63 +1937,66 @@ function renderModal() {
             <span class="mut" style="font-size:10px;text-transform:uppercase;font-weight:700">Service Details</span><br>
             <b>${esc(inv.service?.name || 'Service')}</b><br>
             Slot: ${esc(inv.service?.slot || '')}<br>
-            ${inv.technician ? `Tech: <b>${esc(inv.technician.name)}</b> ${inv.technician.verified ? '⭐' : ''}` : 'Tech: Pending'}
+            ${inv.technician ? `Tech: <b>${esc(inv.technician.name)}</b> ${inv.technician.verified ? '(Verified)' : ''}` : 'Tech: Pending'}
           </div>
         </div>
 
         <div style="font-weight:700;font-size:13px;margin-bottom:8px">Itemized Breakdown</div>
-        <table class="inv-table" style="width:100%;font-size:12px;border-collapse:collapse;margin-bottom:14px">
+        <table class="inv-table">
           <thead>
-            <tr style="border-bottom:1.5px solid var(--bd);text-align:left;color:var(--mut)">
-              <th style="padding:6px 4px">Item</th>
-              <th style="padding:6px 4px;text-align:right">Amount</th>
+            <tr>
+              <th>Item</th>
+              <th style="text-align:right">Amount</th>
             </tr>
           </thead>
           <tbody>
             ${(inv.items || []).map((it) => `
-              <tr style="border-bottom:1px dashed var(--bd)">
-                <td style="padding:8px 4px">
+              <tr>
+                <td>
                   <b>${esc(it.title)}</b>
                   ${it.note ? `<div class="mut" style="font-size:11px">${esc(it.note)}</div>` : ''}
                 </td>
-                <td style="padding:8px 4px;text-align:right;font-weight:700;color:${it.amount < 0 ? 'var(--ok)' : 'var(--ink)'}">
+                <td style="text-align:right;font-weight:700;color:${it.amount < 0 ? 'var(--ok)' : 'var(--ink)'}">
                   ${it.amount < 0 ? '-' : ''}${inr(Math.abs(it.amount))}
                 </td>
               </tr>
             `).join('')}
             <tr style="border-top:1.5px solid var(--bd)">
-              <td style="padding:8px 4px">Taxable Value</td>
-              <td style="padding:8px 4px;text-align:right">₹${inv.gst?.taxable_value ?? inv.subtotal}</td>
+              <td>Taxable Value</td>
+              <td style="text-align:right">₹${inv.gst?.taxable_value ?? inv.subtotal}</td>
             </tr>
             <tr>
-              <td style="padding:4px 4px" class="mut">CGST (9%)</td>
-              <td style="padding:4px 4px;text-align:right" class="mut">₹${inv.gst?.cgst_amount ?? 0}</td>
+              <td class="mut">CGST (9%)</td>
+              <td style="text-align:right" class="mut">₹${inv.gst?.cgst_amount ?? 0}</td>
             </tr>
             <tr>
-              <td style="padding:4px 4px" class="mut">SGST (9%)</td>
-              <td style="padding:4px 4px;text-align:right" class="mut">₹${inv.gst?.sgst_amount ?? 0}</td>
+              <td class="mut">SGST (9%)</td>
+              <td style="text-align:right" class="mut">₹${inv.gst?.sgst_amount ?? 0}</td>
             </tr>
             <tr style="border-top:2px solid var(--bd);font-size:14px;font-weight:800">
-              <td style="padding:10px 4px">Total Payable</td>
-              <td style="padding:10px 4px;text-align:right;color:var(--sec)">${inr(inv.total)}</td>
+              <td>Total Payable</td>
+              <td style="text-align:right;color:var(--pri)">${inr(inv.total)}</td>
             </tr>
           </tbody>
         </table>
 
         ${inv.warranty ? `
-          <div class="card" style="background:rgba(47,158,122,0.08);border:1px solid rgba(47,158,122,0.25);padding:10px 12px;margin-bottom:14px;border-radius:12px">
-            <div style="font-weight:700;color:var(--teal);font-size:12px">
-              🛡️ ${inv.warranty.service_warranty_days}-Day Service Warranty ${inv.warranty.parts_warranty_days ? `+ ${inv.warranty.parts_warranty_days}-Day Parts Warranty` : ''}
-            </div>
-            <div class="mut" style="font-size:11px;margin-top:2px">
-              Valid until <b>${esc(inv.warranty.valid_until)}</b>. ${esc(inv.warranty.terms)}
+          <div class="fm-alert info" style="margin-bottom:14px">
+            ${ic('shieldCheck', 18)}
+            <div>
+              <div style="font-weight:700;color:var(--pri);font-size:12px">
+                ${inv.warranty.service_warranty_days}-Day Service Warranty ${inv.warranty.parts_warranty_days ? `+ ${inv.warranty.parts_warranty_days}-Day Parts Warranty` : ''}
+              </div>
+              <div class="mut" style="font-size:11px;margin-top:2px">
+                Valid until <b>${esc(inv.warranty.valid_until)}</b>. ${esc(inv.warranty.terms)}
+              </div>
             </div>
           </div>
         ` : ''}
 
         <div class="row" style="gap:10px">
           <button class="btn acc" style="flex:1" onclick="downloadPdfInvoice(${S.activeInvoiceBookingId})">
-            🖨️ Download / Print Tax Invoice
+            ${ic('printer', 16)} Download / Print Tax Invoice
           </button>
           <button class="btn ghost" style="width:auto;padding:12px 18px" onclick="closeModal()">Band Karein</button>
         </div>
@@ -1992,30 +2015,33 @@ function renderModal() {
       <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:92vh;overflow-y:auto">
         <div class="modal-header">
           <div>
-            <h3 style="margin:0;font-size:18px">🗺️ Live Technician Tracking</h3>
-            <div class="mut" style="font-size:12px">Booking #${tr.booking_id} · ${esc(tr.status_label)}</div>
+            <h3 style="margin:0;font-size:18px">${ic('map', 18)} Live Technician Tracking</h3>
+            <div class="mut" style="font-size:12px;margin-top:2px">Booking #${tr.booking_id} · ${esc(tr.status_label)}</div>
           </div>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
 
         ${tr.tracking_active && wLoc ? `
-          <div class="card" style="background:rgba(47,158,122,0.08);border-color:var(--teal);padding:10px 12px;margin-bottom:12px">
+          <div class="card" style="background:var(--ok-soft);border-color:var(--ok);padding:10px 12px;margin-bottom:12px">
             <div class="row">
               <div>
-                <b style="color:var(--teal);font-size:14px">🟢 Live GPS Active</b>
+                <b style="color:var(--ok);font-size:14px;display:flex;align-items:center;gap:6px">${ic('radio', 15)} Live GPS Active</b>
                 <div class="mut" style="font-size:11.5px">Updated: ${new Date(wLoc.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
               </div>
               <div style="text-align:right">
-                ${wLoc.eta_minutes ? `<b style="font-size:18px;color:var(--sec)">~${wLoc.eta_minutes} min</b>` : '<b style="color:var(--teal)">En Route</b>'}
+                ${wLoc.eta_minutes ? `<b style="font-size:18px;color:var(--pri)">~${wLoc.eta_minutes} min</b>` : '<b style="color:var(--pri)">En Route</b>'}
                 ${wLoc.distance_km != null ? `<div class="mut" style="font-size:11px">${wLoc.distance_km} km away</div>` : ''}
               </div>
             </div>
           </div>
         ` : `
-          <div class="card" style="background:var(--soft);border:none;padding:10px 12px;margin-bottom:12px;font-size:12px">
-            ${tr.is_active_job
-              ? '⏳ <b>Location Permission Pending:</b> Technician ne abhi GPS sharing on nahi ki hai. Jab wo "Share GPS" chalu karenge tab live map update hoga.'
-              : '🔒 Privacy Notice: Technician location sirf active booking ke dauran hi visible hoti hai.'}
+          <div class="fm-alert info" style="margin-bottom:12px">
+            ${ic(tr.is_active_job ? 'clock' : 'lock', 16)}
+            <div>
+              ${tr.is_active_job
+                ? '<b>Location Permission Pending:</b> Technician ne abhi GPS sharing on nahi ki hai. Jab wo "Share GPS" chalu karenge tab live map update hoga.'
+                : '<b>Privacy Notice:</b> Technician location sirf active booking ke dauran hi visible hoti hai.'}
+            </div>
           </div>
         `}
 
@@ -2024,7 +2050,7 @@ function renderModal() {
         ${tr.technician ? `
           <div class="card row" style="margin-top:12px;padding:10px 12px">
             <div>
-              <b>${esc(tr.technician.name)}</b> ${tr.technician.verified ? '⭐ Verified' : ''}
+              <b>${esc(tr.technician.name)}</b> ${tr.technician.verified ? `<span class="badge ok" style="font-size:10px">${ic('shieldCheck', 11)} Verified</span>` : ''}
               <div class="mut" style="font-size:11.5px">${esc(tr.technician.skill)} · ${esc(cLoc?.address || 'Dhanbad')}</div>
             </div>
             ${tr.technician.contact_phone ? `<a href="tel:${esc(tr.technician.contact_phone)}" class="btn sm acc" style="width:auto;padding:6px 12px;text-decoration:none">${ic('phone', 14)} Call</a>` : ''}
@@ -2035,8 +2061,8 @@ function renderModal() {
           <div style="font-weight:700;font-size:13px;margin:12px 0 6px">Live Status Updates</div>
           <div class="card" style="padding:10px 12px;font-size:12px">
             ${tl.map((step) => `
-              <div class="row" style="padding:4px 0;border-bottom:1px dashed var(--bd)">
-                <span>✅ <b>${esc(step.new_status.replace(/_/g, ' '))}</b> ${step.notes ? `— ${esc(step.notes)}` : ''}</span>
+              <div class="row" style="padding:5px 0;border-bottom:1px dashed var(--bd)">
+                <span style="display:flex;align-items:center;gap:6px">${ic('checkCircle', 13)} <b>${esc(step.new_status.replace(/_/g, ' '))}</b> ${step.notes ? `— ${esc(step.notes)}` : ''}</span>
                 <span class="mut" style="font-size:11px">${new Date(step.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
             `).join('')}
@@ -2053,15 +2079,15 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:85vh;overflow-y:auto">
         <div class="modal-header">
-          <h3>🔔 Status Notifications</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('bell', 18)} Status Notifications</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         ${list.length ? `
           <div style="text-align:right;margin-bottom:8px">
-            <button class="btn sm ghost" style="width:auto;padding:4px 10px;font-size:11px" onclick="markAllNotificationsRead()">Mark All Read</button>
+            <button class="btn sm ghost" style="width:auto;padding:4px 10px;font-size:11px" onclick="markAllNotificationsRead()">${ic('check', 13)} Mark All Read</button>
           </div>
           ${list.map((n) => `
-            <div class="card" style="margin-bottom:8px;padding:10px 12px;background:${n.is_read ? 'var(--card)' : 'rgba(0,106,96,0.06)'};border-color:${n.is_read ? 'var(--bd)' : 'var(--teal)'}">
+            <div class="card" style="margin-bottom:8px;padding:10px 12px;background:${n.is_read ? 'var(--card)' : 'var(--pri-soft)'};border-color:${n.is_read ? 'var(--bd)' : 'var(--pri)'}">
               <div class="row">
                 <b style="font-size:13px">${esc(n.title)}</b>
                 <span class="mut" style="font-size:10.5px">${new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -2069,7 +2095,7 @@ function renderModal() {
               <div class="mut" style="font-size:12px;margin-top:3px">${esc(n.body)}</div>
             </div>
           `).join('')}
-        ` : '<div class="card mut" style="text-align:center;padding:24px">Abhi koi naya notification nahi hai.</div>'}
+        ` : emptyBox('bell', 'Koi naya notification nahi', 'Aapki bookings aur offers ke updates yahan dikhenge.')}
       </div>
     </div>`;
   }
@@ -2080,14 +2106,14 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">
         <div class="modal-header">
-          <h3>🛡️ Annual Maintenance Plans</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('shieldCheck', 18)} Annual Maintenance Plans</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
 
         ${subs.length ? `
-          <div style="font-weight:800;font-size:13px;margin-bottom:6px;color:var(--teal)">Active Subscriptions</div>
+          <div style="font-weight:800;font-size:13px;margin-bottom:6px;color:var(--pri)">Active Subscriptions</div>
           ${subs.map((s) => `
-            <div class="card" style="border-color:var(--teal);background:rgba(0,106,96,0.04);margin-bottom:10px;padding:12px">
+            <div class="card" style="border-color:var(--pri);background:var(--pri-soft);margin-bottom:10px;padding:12px">
               <div class="row">
                 <b>${esc(s.plan_name)}</b>
                 <span class="badge ok">${s.visits_remaining}/${s.visits_total} Visits Left</span>
@@ -2095,7 +2121,7 @@ function renderModal() {
               <div class="mut" style="font-size:11.5px;margin-top:4px">
                 Valid until: <b>${new Date(s.end_date).toLocaleDateString('en-IN')}</b> (${s.days_left} days left)
               </div>
-              ${s.needs_renewal ? `<button class="btn sm acc" style="margin-top:8px" onclick="renewAmcPlan(${s.id})">🔄 Renew AMC Plan</button>` : ''}
+              ${s.needs_renewal ? `<button class="btn sm acc" style="margin-top:8px" onclick="renewAmcPlan(${s.id})">${ic('refresh', 14)} Renew AMC Plan</button>` : ''}
             </div>
           `).join('')}
         ` : ''}
@@ -2108,10 +2134,10 @@ function renderModal() {
                 <b>${esc(p.name)}</b>
                 <div class="mut" style="font-size:11.5px">${esc(p.category)} · ${p.validity_months} Months · ${p.visits_included} Visits</div>
               </div>
-              <b style="font-size:16px;color:var(--teal)">${inr(p.price)}</b>
+              <b style="font-size:16px;color:var(--pri)">${inr(p.price)}</b>
             </div>
-            <div style="font-size:11.5px;margin-top:8px;color:var(--ok)"><b>✅ Includes:</b> ${esc(p.inclusions)}</div>
-            <div style="font-size:11.5px;margin-top:4px;color:var(--mut)"><b>❌ Excludes:</b> ${esc(p.exclusions)}</div>
+            <div style="font-size:11.5px;margin-top:8px;color:var(--ok);display:flex;gap:5px;align-items:flex-start">${ic('checkCircle', 14)} <span><b>Includes:</b> ${esc(p.inclusions)}</span></div>
+            <div style="font-size:11.5px;margin-top:4px;color:var(--mut);display:flex;gap:5px;align-items:flex-start">${ic('xCircle', 14)} <span><b>Excludes:</b> ${esc(p.exclusions)}</span></div>
             <button class="btn sm acc" style="margin-top:10px" onclick="subscribeAmcPlan(${p.id}, '${esc(p.name)}', ${p.price})">
               Subscribe via Wallet (${inr(p.price)})
             </button>
@@ -2126,26 +2152,26 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">
         <div class="modal-header">
-          <h3>📜 Service History & Warranty</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('award', 18)} Service History & Warranty</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         ${hist.length ? hist.map((h) => `
-          <div class="card" style="margin-bottom:10px;padding:12px;border-color:${h.warranty_active ? 'var(--teal)' : 'var(--bd)'}">
+          <div class="card" style="margin-bottom:10px;padding:12px;border-color:${h.warranty_active ? 'var(--pri)' : 'var(--bd)'}">
             <div class="row">
               <b>#${h.booking_id} ${esc(h.service)}</b>
-              <span class="badge ${h.warranty_active ? 'ok' : ''}">${h.warranty_active ? '🛡️ Under Warranty' : 'Expired / N/A'}</span>
+              <span class="badge ${h.warranty_active ? 'ok' : ''}">${h.warranty_active ? `${ic('shieldCheck', 12)} Under Warranty` : 'Expired / N/A'}</span>
             </div>
             <div class="mut" style="font-size:12px;margin-top:4px">
               Completed: ${new Date(h.completed_at).toLocaleDateString('en-IN')} · Tech: <b>${esc(h.technician_name)}</b>
             </div>
-            ${h.parts_desc ? `<div style="font-size:12px;margin-top:4px">🔧 Parts Replaced: <b>${esc(h.parts_desc)}</b> (${inr(h.parts_cost)})</div>` : ''}
+            ${h.parts_desc ? `<div style="font-size:12px;margin-top:4px;display:flex;align-items:center;gap:5px">${ic('tool', 13)} Parts Replaced: <b>${esc(h.parts_desc)}</b> (${inr(h.parts_cost)})</div>` : ''}
             <div class="mut" style="font-size:11.5px;margin-top:4px">${esc(h.warranty_terms)}</div>
             <div class="row" style="margin-top:8px">
-              <button class="btn sm ghost" style="flex:1" onclick="openInvoiceModal(${h.booking_id})">📄 Invoice</button>
-              <button class="btn sm acc" style="flex:1" onclick="repeatBooking(${h.booking_id})">🔁 Rebook</button>
+              <button class="btn sm ghost" style="flex:1" onclick="openInvoiceModal(${h.booking_id})">${ic('fileText', 14)} Invoice</button>
+              <button class="btn sm acc" style="flex:1" onclick="repeatBooking(${h.booking_id})">${ic('repeat', 14)} Rebook</button>
             </div>
           </div>
-        `).join('') : '<div class="card mut" style="text-align:center;padding:24px">Abhi koi completed service warranty record nahi hai.</div>'}
+        `).join('') : emptyBox('award', 'Koi warranty record nahi', 'Completed services ke baad 30-day warranty certificate yahan dikhega.')}
       </div>
     </div>`;
   }
@@ -2155,8 +2181,8 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">
         <div class="modal-header">
-          <h3>👨‍👩‍👧 Family Members</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('users', 18)} Family Members</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         ${list.length ? list.map((m) => `
           <div class="card row" style="margin-bottom:8px;padding:10px 12px">
@@ -2171,7 +2197,7 @@ function renderModal() {
         <input id="fam-name" placeholder="Name (e.g. Maa / Papa)" style="margin-bottom:8px">
         <input id="fam-phone" type="tel" maxlength="10" placeholder="10-digit Phone Number" style="margin-bottom:8px">
         <input id="fam-rel" placeholder="Relation (Parents, Spouse, Sibling)" value="Parents" style="margin-bottom:12px">
-        <button class="btn acc" onclick="saveFamilyMember()">Member Jodein</button>
+        <button class="btn acc" onclick="saveFamilyMember()">${ic('plus', 16)} Member Jodein</button>
       </div>
     </div>`;
   }
@@ -2181,8 +2207,8 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto">
         <div class="modal-header">
-          <h3>⏰ Maintenance Reminders</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('clock', 18)} Maintenance Reminders</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         ${list.length ? list.map((r) => `
           <div class="card row" style="margin-bottom:8px;padding:10px 12px">
@@ -2197,7 +2223,7 @@ function renderModal() {
           </div>
         `).join('') : '<div class="card mut" style="margin-bottom:12px">Abhi koi reminder set nahi hai.</div>'}
         <div style="font-weight:700;font-size:13px;margin:10px 0 6px">+ New Reminder</div>
-        <select id="rem-cat" style="margin-bottom:8px;padding:10px;border-radius:12px;border:1.5px solid var(--bd);width:100%;background:var(--card)">
+        <select id="rem-cat" style="margin-bottom:8px">
           <option value="AC Repair">AC Repair (Seasonal Servicing)</option>
           <option value="RO & Water Purifier">RO Filter Replacement</option>
           <option value="Washing Machine">Washing Machine Care</option>
@@ -2205,7 +2231,7 @@ function renderModal() {
         </select>
         <input id="rem-title" placeholder="Title (e.g. Summer Split AC Jet Wash)" style="margin-bottom:8px">
         <input id="rem-int" type="number" min="1" max="24" value="6" placeholder="Repeat every (months)" style="margin-bottom:12px">
-        <button class="btn acc" onclick="saveReminder()">Reminder Set Karein</button>
+        <button class="btn acc" onclick="saveReminder()">${ic('clock', 16)} Reminder Set Karein</button>
       </div>
     </div>`;
   }
@@ -2215,8 +2241,8 @@ function renderModal() {
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h3>📍 Service Area Checker</h3>
-          <button class="modal-close" onclick="closeModal()">×</button>
+          <h3>${ic('pin', 18)} Service Area Checker</h3>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         <div class="mut" style="font-size:12.5px;margin-bottom:10px">Dhanbad mein apna 6-digit pincode daal kar service availability check karein:</div>
         <div class="row" style="gap:8px;margin-bottom:12px">
@@ -2224,9 +2250,12 @@ function renderModal() {
           <button class="btn sm acc" style="width:auto;padding:12px 16px" onclick="checkPincodeServiceability()">Check</button>
         </div>
         ${chk ? `
-          <div class="card" style="background:${chk.serviceable ? 'rgba(47,158,122,0.08)' : '#FEE2E2'};border-color:${chk.serviceable ? 'var(--teal)' : '#DC2626'};padding:10px 12px;font-size:13px">
-            <b>${chk.serviceable ? '✅ Service Available!' : '❌ Not Yet Serviceable'}</b><br>
-            ${esc(chk.message)}
+          <div class="fm-alert ${chk.serviceable ? 'success' : 'error'}">
+            ${ic(chk.serviceable ? 'checkCircle' : 'xCircle', 18)}
+            <div>
+              <b>${chk.serviceable ? 'Service Available!' : 'Not Yet Serviceable'}</b><br>
+              ${esc(chk.message)}
+            </div>
           </div>
         ` : ''}
       </div>
@@ -2535,7 +2564,7 @@ async function toggleWorkerLocationSharing(bookingId) {
       await sendCoords(pos);
       await refresh();
       render();
-      toast('🟢 Live GPS Sharing chalu! Customer ko ETA dikhega.');
+      toast('Live GPS Sharing chalu! Customer ko ETA dikhega.');
 
       S.wkWatchId = navigator.geolocation.watchPosition(
         sendCoords,
@@ -2618,8 +2647,8 @@ function renderLeafletTrackingMap(tr) {
   if (hasC) {
     const custIcon = window.L.divIcon({
       className: 'map-pin-badge',
-      html: '<div style="background:#006A60;color:#fff;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)">🏠 Customer</div>',
-      iconSize: [90, 26]
+      html: `<div style="background:#1677E8;color:#fff;padding:4px 9px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;box-shadow:0 2px 8px rgba(22,119,232,.4);display:inline-flex;align-items:center;gap:4px">${ic('home', 12)} Customer</div>`,
+      iconSize: [96, 26]
     });
     window.L.marker([cLoc.lat, cLoc.lng], { icon: custIcon }).addTo(map).bindPopup('Service Address: ' + esc(cLoc.address));
     bounds.push([cLoc.lat, cLoc.lng]);
@@ -2628,8 +2657,8 @@ function renderLeafletTrackingMap(tr) {
   if (hasW) {
     const techIcon = window.L.divIcon({
       className: 'map-pin-badge',
-      html: `<div style="background:#FA6A00;color:#fff;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)">🛵 Tech ${wLoc.eta_minutes ? `(${wLoc.eta_minutes}m)` : ''}</div>`,
-      iconSize: [100, 26]
+      html: `<div style="background:#08A6C1;color:#fff;padding:4px 9px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;box-shadow:0 2px 8px rgba(8,166,193,.4);display:inline-flex;align-items:center;gap:4px">${ic('nav', 12)} Tech ${wLoc.eta_minutes ? `(${wLoc.eta_minutes}m)` : ''}</div>`,
+      iconSize: [104, 26]
     });
     window.L.marker([wLoc.lat, wLoc.lng], { icon: techIcon }).addTo(map).bindPopup(esc(tr.technician?.name || 'Technician'));
     bounds.push([wLoc.lat, wLoc.lng]);
@@ -2637,7 +2666,7 @@ function renderLeafletTrackingMap(tr) {
 
   if (hasW && hasC) {
     window.L.polyline([[wLoc.lat, wLoc.lng], [cLoc.lat, cLoc.lng]], {
-      color: '#FA6A00',
+      color: '#1677E8',
       weight: 3,
       dashArray: '6, 8'
     }).addTo(map);
@@ -2695,7 +2724,7 @@ async function repeatBooking(bookingId) {
     scrollTo(0, 0);
     const note = res.price_changed ? `Live updated price: ${inr(res.service.price)}. ` : '';
     const techNote = res.availability.available ? `${res.availability.online_technicians} tech(s) online.` : 'Schedule later slot.';
-    toast(`🔁 Pre-filled! ${note}${techNote}`);
+    toast(`Pre-filled! ${note}${techNote}`);
   } catch (err) {
     toast(err.message || 'Repeat booking fail hui');
   }
@@ -2835,35 +2864,70 @@ async function checkPincodeServiceability() {
 function adm() {
   const cur = S.admTab || 'overview';
   const u = S.user || { name: 'Master Admin', phone: '9999999999' };
+  const openComplaints = (S.admComplaints || []).filter((c) => c.status === 'open').length;
+  const navItems = [
+    { id: 'overview', label: 'Overview', icon: 'layoutDashboard' },
+    { id: 'bookings', label: 'Bookings', icon: 'list' },
+    { id: 'techs', label: 'Technicians', icon: 'tool' },
+    { id: 'catalog', label: 'Catalog & Pricing', icon: 'tag' },
+    { id: 'complaints', label: 'Support Tickets', icon: 'alert', badge: openComplaints }
+  ];
 
-  return `
-    <div class="adm-hero">
-      <div class="row">
-        <div>
-          <span class="adm-badge verified" style="background:rgba(255,255,255,0.2);color:#fff">Master Admin</span>
-          <h2 style="font-size:22px;margin:6px 0 2px">FixMate Control Center</h2>
-          <div style="font-size:12px;opacity:0.9">Admin: ${esc(u.name)} (${esc(u.phone)})</div>
-        </div>
-        <button class="btn sm ghost" style="color:#fff;border-color:rgba(255,255,255,0.4)" onclick="out()">
-          Logout
-        </button>
+  return `<div class="adm-shell">
+    <aside class="adm-sidebar" aria-label="Founder Admin navigation">
+      <div style="padding:4px 4px 12px;border-bottom:1.5px solid var(--bd)">
+        ${fmLogo({ size: 36, subtitle: 'Founder Console' })}
       </div>
-    </div>
+      <nav class="adm-side-nav">
+        ${navItems.map((it) => `
+          <button class="adm-side-btn ${cur === it.id ? 'on' : ''}" onclick="setAdmTab('${it.id}')">
+            <span class="lbl">${ic(it.icon, 17)} ${it.label}</span>
+            ${it.badge ? `<span class="badge ${cur === it.id ? '' : 'warn'}" style="${cur === it.id ? 'background:rgba(255,255,255,0.22);color:#fff' : ''}">${it.badge}</span>` : ''}
+          </button>
+        `).join('')}
+      </nav>
+      <div style="margin-top:auto;padding-top:12px;border-top:1.5px solid var(--bd);display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:12px">
+          <b>${esc(u.name)}</b>
+          <div class="mut">${esc(u.phone)}</div>
+        </div>
+        <div class="row" style="gap:6px">
+          <button class="btn sm ghost" style="flex:1" onclick="theme()" title="Toggle theme">${ic(isDarkTheme() ? 'sun' : 'moon', 15)}</button>
+          <button class="btn sm ghost" style="flex:2;color:var(--bad)" onclick="out()">${ic('logOut', 15)} Logout</button>
+        </div>
+      </div>
+    </aside>
 
-    <div class="adm-subnav">
-      <button class="chip ${cur === 'overview' ? 'on' : ''}" onclick="setAdmTab('overview')">📊 Overview</button>
-      <button class="chip ${cur === 'bookings' ? 'on' : ''}" onclick="setAdmTab('bookings')">📋 Bookings</button>
-      <button class="chip ${cur === 'techs' ? 'on' : ''}" onclick="setAdmTab('techs')">🛠️ Technicians</button>
-      <button class="chip ${cur === 'catalog' ? 'on' : ''}" onclick="setAdmTab('catalog')">🏷️ Catalog & Pricing</button>
-      <button class="chip ${cur === 'complaints' ? 'on' : ''}" onclick="setAdmTab('complaints')">🎫 Support Tickets</button>
-    </div>
+    <div class="adm-main">
+      <div class="adm-hero">
+        <div class="row">
+          <div>
+            <span class="brand-badge" style="margin:0 0 6px">${ic('shieldCheck', 13)} Founder / Admin Console</span>
+            <h2 style="font-size:22px;margin:0 0 2px;color:#fff">FixMate Control Center</h2>
+            <div style="font-size:12.5px;opacity:0.9">${esc(u.name)} · ${esc(u.phone)}</div>
+          </div>
+          <div class="ics">
+            <button class="ic" onclick="theme()" title="Toggle theme" aria-label="Toggle theme">${ic(isDarkTheme() ? 'sun' : 'moon', 18)}</button>
+            <button class="btn sm ghost" style="background:rgba(255,255,255,0.16);color:#fff;border-color:rgba(255,255,255,0.3)" onclick="out()">
+              ${ic('logOut', 15)} Logout
+            </button>
+          </div>
+        </div>
+      </div>
 
-    ${cur === 'overview' ? admOverview() : ''}
-    ${cur === 'bookings' ? admBookings() : ''}
-    ${cur === 'techs' ? admTechs() : ''}
-    ${cur === 'catalog' ? admCatalog() : ''}
-    ${cur === 'complaints' ? admComplaints() : ''}
-  `;
+      <div class="adm-subnav">
+        ${navItems.map((it) => `
+          <button class="chip ${cur === it.id ? 'on' : ''}" onclick="setAdmTab('${it.id}')">${ic(it.icon, 14)} ${it.label}</button>
+        `).join('')}
+      </div>
+
+      ${cur === 'overview' ? admOverview() : ''}
+      ${cur === 'bookings' ? admBookings() : ''}
+      ${cur === 'techs' ? admTechs() : ''}
+      ${cur === 'catalog' ? admCatalog() : ''}
+      ${cur === 'complaints' ? admComplaints() : ''}
+    </div>
+  </div>`;
 }
 
 function admOverview() {
@@ -2885,22 +2949,22 @@ function admOverview() {
   return `
     <div class="adm-kpi-grid">
       <div class="adm-kpi-card highlight">
-        <span class="mut" style="font-size:11px;font-weight:700">PLATFORM REVENUE</span>
-        <div class="adm-kpi-val" style="color:var(--teal)">${inr(an.total_revenue || 0)}</div>
+        <span class="mut" style="font-size:11px;font-weight:700;display:flex;align-items:center;gap:5px">${ic('trendingUp', 14)} PLATFORM REVENUE</span>
+        <div class="adm-kpi-val" style="color:var(--pri)">${inr(an.total_revenue || 0)}</div>
         <div class="adm-kpi-sub">FixMate 15% cut: <b>${inr(an.platform_commission || 0)}</b></div>
       </div>
       <div class="adm-kpi-card orange">
-        <span class="mut" style="font-size:11px;font-weight:700">TOTAL BOOKINGS</span>
-        <div class="adm-kpi-val" style="color:var(--orange)">${an.total_bookings || 0}</div>
+        <span class="mut" style="font-size:11px;font-weight:700;display:flex;align-items:center;gap:5px">${ic('list', 14)} TOTAL BOOKINGS</span>
+        <div class="adm-kpi-val" style="color:var(--sec-deep)">${an.total_bookings || 0}</div>
         <div class="adm-kpi-sub">${bMap.completed || 0} completed · ${bMap.requested || 0} pending</div>
       </div>
       <div class="adm-kpi-card">
-        <span class="mut" style="font-size:11px;font-weight:700">CUSTOMERS & TECHS</span>
+        <span class="mut" style="font-size:11px;font-weight:700;display:flex;align-items:center;gap:5px">${ic('users', 14)} CUSTOMERS & TECHS</span>
         <div class="adm-kpi-val">${an.total_customers || 0} / ${an.total_workers || 0}</div>
         <div class="adm-kpi-sub">${an.verified_workers || 0} ID Verified Technicians</div>
       </div>
       <div class="adm-kpi-card">
-        <span class="mut" style="font-size:11px;font-weight:700">SUPPORT TICKETS</span>
+        <span class="mut" style="font-size:11px;font-weight:700;display:flex;align-items:center;gap:5px">${ic('alert', 14)} SUPPORT TICKETS</span>
         <div class="adm-kpi-val">${an.total_complaints || 0}</div>
         <div class="adm-kpi-sub">${(an.complaints_by_status?.open || 0)} open tickets</div>
       </div>
@@ -2908,8 +2972,8 @@ function admOverview() {
 
     <div class="adm-table-card">
       <div class="row" style="margin-bottom:12px">
-        <b style="font-size:15px">Top Performing Services</b>
-        <button class="btn sm ghost" style="width:auto;padding:4px 10px;font-size:11px" onclick="setAdmTab('catalog')">Manage Catalog</button>
+        <b style="font-size:15px;display:flex;align-items:center;gap:6px">${ic('barChart', 16)} Top Performing Services</b>
+        <button class="btn sm ghost" style="width:auto;padding:5px 12px;font-size:12px" onclick="setAdmTab('catalog')">Manage Catalog</button>
       </div>
       ${(an.top_services && an.top_services.length) ? an.top_services.map((s) => `
         <div class="adm-svc-row">
@@ -2926,8 +2990,8 @@ function admOverview() {
     </div>
 
     <div class="row" style="margin-top:14px">
-      <button class="btn acc" onclick="setAdmTab('bookings')">📋 Review All Bookings</button>
-      <button class="btn ghost" onclick="setAdmTab('complaints')">🎫 Handle Tickets</button>
+      <button class="btn acc" onclick="setAdmTab('bookings')">${ic('list', 16)} Review All Bookings</button>
+      <button class="btn ghost" onclick="setAdmTab('complaints')">${ic('alert', 16)} Handle Tickets</button>
     </div>
   `;
 }
@@ -2961,21 +3025,21 @@ function admBookings() {
             ${b.worker_name ? `
               <span style="font-size:12px">Tech: <b>${esc(b.worker_name)}</b> (${esc(b.worker_phone || '')})</span>
             ` : `
-              <span class="adm-badge open">⚠️ No Technician Assigned</span>
+              <span class="adm-badge open">${ic('alertTriangle', 12)} No Technician Assigned</span>
             `}
           </div>
-          <b>${inr(b.total || b.base_price || 0)} ${b.paid ? '✅ Paid' : '⏳ Unpaid'}</b>
+          <b>${inr(b.total || b.base_price || 0)} · <span style="color:${b.paid ? 'var(--ok)' : 'var(--warn)'}">${b.paid ? 'Paid' : 'Unpaid'}</span></b>
         </div>
         <div class="row" style="margin-top:10px">
           <button class="btn sm ghost" onclick="openAdminAssignModal(${b.id})">
-            ${b.worker_name ? 'Reassign Tech' : '👉 Assign Technician'}
+            ${ic('userCheck', 14)} ${b.worker_name ? 'Reassign Tech' : 'Assign Technician'}
           </button>
           <button class="btn sm ghost" onclick="openInvoiceModal(${b.id})">
-            📄 Invoice
+            ${ic('fileText', 14)} Invoice
           </button>
         </div>
       </div>
-    `).join('') : '<div class="card mut" style="text-align:center;padding:24px">No bookings found in this view.</div>'}
+    `).join('') : emptyBox('list', 'No bookings found', 'Try changing the status filter above.')}
   `;
 }
 
@@ -2997,30 +3061,30 @@ function admTechs() {
       <div class="adm-item-card">
         <div class="row">
           <div class="row" style="justify-content:flex-start;gap:10px">
-            <span class="av" style="background:var(--soft);color:var(--teal);border-radius:12px">${ic('tool', 20)}</span>
+            <span class="av" style="background:var(--pri-soft);color:var(--pri);border-radius:12px">${ic('tool', 20)}</span>
             <div>
               <b>${esc(w.name)}</b>
               <div class="mut" style="font-size:12px">${esc(w.skill || 'Technician')} · ${w.experience_years != null ? w.experience_years + ' yrs exp' : 'Experienced'}</div>
             </div>
           </div>
           <span class="adm-badge ${w.id_verified ? 'verified' : 'unverified'}">
-            ${w.id_verified ? '✅ Verified' : '⚠️ Pending ID'}
+            ${ic(w.id_verified ? 'shieldCheck' : 'alertTriangle', 12)} ${w.id_verified ? 'Verified' : 'Pending ID'}
           </span>
         </div>
         <div class="mut" style="font-size:12px;margin:8px 0">
           Phone: <b>${esc(w.phone)}</b> · Areas: ${esc(w.service_areas || 'All Dhanbad')}<br>
-          Status: ${w.online ? '🟢 Online (Ready for jobs)' : '⚪ Offline'} · Wallet: <b>${inr(w.wallet || 0)}</b>
+          Status: ${w.online ? 'Online (Ready for jobs)' : 'Offline'} · Wallet: <b>${inr(w.wallet || 0)}</b>
         </div>
         <div class="row" style="margin-top:10px">
           <button class="btn sm ${w.id_verified ? 'ghost' : 'acc'}" onclick="toggleTechVerification(${w.id}, ${w.id_verified ? 0 : 1})">
-            ${w.id_verified ? 'Revoke Verification' : '✅ Approve & Issue Verified Badge'}
+            ${ic(w.id_verified ? 'xCircle' : 'checkCircle', 14)} ${w.id_verified ? 'Revoke Verification' : 'Approve & Issue Verified Badge'}
           </button>
           <a href="tel:${esc(w.phone)}" class="btn sm ghost" style="text-decoration:none;width:auto;padding:8px 12px">
             ${ic('phone', 14)} Call
           </a>
         </div>
       </div>
-    `).join('') : '<div class="card mut" style="text-align:center;padding:24px">No technicians found in this view.</div>'}
+    `).join('') : emptyBox('tool', 'No technicians found', 'Registered service providers will appear here.')}
   `;
 }
 
@@ -3032,7 +3096,7 @@ function admCatalog() {
     <div class="row" style="margin-bottom:12px">
       <h3 style="font-size:17px;margin:0">Service Catalog (${svcs.length})</h3>
       <button class="btn sm acc" style="width:auto;padding:8px 14px" onclick="openAdminAddServiceModal()">
-        + Add Service
+        ${ic('plus', 15)} Add Service
       </button>
     </div>
 
@@ -3041,12 +3105,12 @@ function admCatalog() {
         <div class="adm-svc-row">
           <div>
             <b>${esc(s.n)}</b>
-            <div class="mut" style="font-size:11px">${esc(s.c)} · ⭐ ${s.r || 4.8}</div>
+            <div class="mut" style="font-size:11px;display:flex;align-items:center;gap:4px">${esc(s.c)} · ${ic('star', 11, true)} ${s.r || 4.8}</div>
           </div>
           <div class="row" style="justify-content:flex-end;gap:8px">
-            <b style="font-size:15px;color:var(--teal)">${inr(s.p)}</b>
-            <button class="btn sm ghost" style="width:auto;padding:4px 10px;font-size:11px" onclick="openAdminEditPriceModal({ id: ${s.id}, name: '${esc(s.n).replace(/'/g, "\\'")}', cat: '${esc(s.c)}', price: ${s.p} })">
-              Edit Price
+            <b style="font-size:15px;color:var(--pri)">${inr(s.p)}</b>
+            <button class="btn sm ghost" style="width:auto;padding:5px 10px;font-size:11px" onclick="openAdminEditPriceModal({ id: ${s.id}, name: '${esc(s.n).replace(/'/g, "\\'")}', cat: '${esc(s.c)}', price: ${s.p} })">
+              ${ic('edit', 13)} Edit Price
             </button>
           </div>
         </div>
@@ -3056,7 +3120,7 @@ function admCatalog() {
     <div class="row" style="margin:20px 0 12px">
       <h3 style="font-size:17px;margin:0">Coupons & Promo Offers (${cpns.length})</h3>
       <button class="btn sm acc" style="width:auto;padding:8px 14px" onclick="openAdminAddCouponModal()">
-        + Add Coupon
+        ${ic('plus', 15)} Add Coupon
       </button>
     </div>
 
@@ -3064,7 +3128,7 @@ function admCatalog() {
       ${cpns.length ? cpns.map((c) => `
         <div class="adm-svc-row">
           <div>
-            <b>🏷️ ${esc(c.code)}</b>
+            <b style="display:flex;align-items:center;gap:5px">${ic('tag', 14)} ${esc(c.code)}</b>
             <div class="mut" style="font-size:11px">${esc(c.title)} · Min order: ${inr(c.min_order_amount || 0)}</div>
           </div>
           <div class="row" style="justify-content:flex-end;gap:8px">
@@ -3101,7 +3165,7 @@ function admComplaints() {
           Problem: <span style="color:var(--ink)">"${esc(c.description)}"</span>
         </div>
         ${c.refund_requested ? `
-          <div class="adm-badge open" style="margin:4px 0 8px">💰 Customer Requested Refund</div>
+          <div class="adm-badge open" style="margin:4px 0 8px">${ic('wallet', 12)} Customer Requested Refund</div>
         ` : ''}
         ${c.resolution_notes ? `
           <div class="card" style="background:var(--soft);border:none;padding:8px 12px;margin:8px 0;font-size:12px">
@@ -3112,7 +3176,7 @@ function admComplaints() {
         ${c.status !== 'resolved' && c.status !== 'closed' ? `
           <div class="row" style="margin-top:10px">
             <button class="btn sm acc" onclick="openAdminResolveModal(${c.id})">
-              👉 Resolve Ticket & Issue Refund
+              ${ic('checkCircle', 14)} Resolve Ticket & Issue Refund
             </button>
             <a href="tel:${esc(c.customer_phone)}" class="btn sm ghost" style="text-decoration:none;width:auto;padding:8px 12px">
               ${ic('phone', 14)} Call Customer
@@ -3120,7 +3184,7 @@ function admComplaints() {
           </div>
         ` : ''}
       </div>
-    `).join('') : '<div class="card mut" style="text-align:center;padding:24px">No support tickets in this view.</div>'}
+    `).join('') : emptyBox('alert', 'No support tickets', 'Customer support tickets will appear here.')}
   `;
 }
 
@@ -3150,7 +3214,7 @@ async function diag() {
   const dg = $('dg');
   if (!dg) return;
 
-  dg.innerHTML = '<div class="mut" style="margin-top:8px">🔍 Smart Finder check kar raha hai...</div>';
+  dg.innerHTML = `<div class="mut" style="margin-top:8px;display:flex;align-items:center;gap:6px">${ic('search', 14)} Smart Finder check kar raha hai...</div>`;
 
   try {
     const res = await api('POST', '/services/smart-find', { query: v });
@@ -3158,10 +3222,10 @@ async function diag() {
       const top = res.recommended_services[0];
       const idx = SV.findIndex((s) => s.id === top.id || s.n === top.name);
       const causes = res.possible_causes || [];
-      dg.innerHTML = `<div class="card" style="margin:10px 0 0;border-color:var(--teal);background:rgba(0,106,96,0.03)">
+      dg.innerHTML = `<div class="card" style="margin:10px 0 0;border-color:var(--pri);background:var(--pri-soft)">
         <div class="row">
-          <b style="color:var(--teal)">🔍 Category: ${esc(res.detected_category)}</b>
-          <span class="badge ok">⭐ ${top.rating || 4.8}</span>
+          <b style="color:var(--pri);display:flex;align-items:center;gap:5px">${ic('search', 14)} Category: ${esc(res.detected_category)}</b>
+          <span class="badge ok">${ic('star', 12, true)} ${top.rating || 4.8}</span>
         </div>
         <div style="font-weight:700;font-size:14px;margin-top:4px">${esc(top.name)} — ${esc(top.base_price)}</div>
         ${res.follow_up_question ? `<div class="mut" style="font-size:12px;margin-top:4px">${esc(res.follow_up_question)}</div>` : ''}
@@ -3173,7 +3237,7 @@ async function diag() {
         ` : ''}
         <div class="row" style="margin-top:10px;gap:8px">
           ${idx >= 0 ? `<button class="btn sm acc" style="flex:1" onclick="pick(${idx})">Book Karein</button>` : ''}
-          <button class="btn sm ghost" style="flex:1" onclick="window.FixMateAI&&window.FixMateAI.open('chat');setTimeout(()=>window.FixMateAI.sendSuggested(${JSON.stringify(v).replace(/"/g, '&quot;')}),300)">✨ Ask AI Assistant</button>
+          <button class="btn sm ghost" style="flex:1" onclick="window.FixMateAI&&window.FixMateAI.open('chat');setTimeout(()=>window.FixMateAI.sendSuggested(${JSON.stringify(v).replace(/"/g, '&quot;')}),300)">${ic('sparkles', 14)} Ask AI Assistant</button>
         </div>
       </div>`;
       return;
@@ -3334,19 +3398,26 @@ async function refresh() {
       if (complaintsRes && complaintsRes.complaints) S.admComplaints = complaintsRes.complaints;
       S.coupons = cpnRes.coupons || [];
     } else if (S.user.role === 'worker') {
-      const [w, b, statsRes, reviewsRes] = await Promise.all([
+      const [w, b, statsRes, reviewsRes, availRes, payRes, notifRes] = await Promise.all([
         api('GET', '/wallet'),
         api('GET', '/bookings'),
         api('GET', '/worker/stats').catch(() => ({ stats: {} })),
-        api('GET', '/worker/reviews').catch(() => ({ reviews: [] }))
+        api('GET', '/worker/reviews').catch(() => ({ reviews: [] })),
+        api('GET', '/worker/availability').catch(() => ({ availability: [] })),
+        api('GET', '/worker/payments').catch(() => null),
+        api('GET', '/notifications').catch(() => ({ notifications: [], unread_count: 0 }))
       ]);
       S.w = w.balance;
       S.tx = w.transactions.map((t) => [t.label, t.amount]);
       S.B = b.bookings;
       if (statsRes && statsRes.stats) S.wkStats = statsRes.stats;
       if (reviewsRes && reviewsRes.reviews) S.wkReviews = reviewsRes.reviews;
+      if (availRes && Array.isArray(availRes.availability)) S.wkAvail = availRes.availability;
+      if (payRes && payRes.summary) S.wkPayments = payRes;
+      S.notifications = notifRes.notifications || [];
+      S.unreadNotifications = notifRes.unread_count || 0;
     } else {
-      const [w, b, addrRes, cpnRes, compRes, notifRes, amcRes, famRes, remRes] = await Promise.all([
+      const [w, b, addrRes, cpnRes, compRes, notifRes, amcRes, famRes, remRes, provRes, payRes] = await Promise.all([
         api('GET', '/wallet'),
         api('GET', '/bookings'),
         api('GET', '/addresses').catch(() => ({ addresses: [] })),
@@ -3355,7 +3426,9 @@ async function refresh() {
         api('GET', '/notifications').catch(() => ({ notifications: [], unread_count: 0 })),
         api('GET', '/amc/my').catch(() => ({ subscriptions: [] })),
         api('GET', '/family').catch(() => ({ members: [] })),
-        api('GET', '/reminders').catch(() => ({ reminders: [] }))
+        api('GET', '/reminders').catch(() => ({ reminders: [] })),
+        api('GET', '/providers').catch(() => ({ providers: [] })),
+        api('GET', '/payments/my').catch(() => ({ payments: [], wallet_transactions: [] }))
       ]);
       S.w = w.balance;
       S.tx = w.transactions.map((t) => [t.label, t.amount]);
@@ -3368,6 +3441,9 @@ async function refresh() {
       S.myAmcSubs = amcRes.subscriptions || [];
       S.familyMembers = famRes.members || [];
       S.reminders = remRes.reminders || [];
+      if (provRes && Array.isArray(provRes.providers)) S.providers = provRes.providers;
+      S.paymentsHistory = payRes.payments || [];
+      S.walletTxHistory = payRes.wallet_transactions || [];
 
       // Auto-select default address if none chosen
       if (!S.ad && S.addresses.length) {
@@ -3452,6 +3528,11 @@ function topup(a) {
    ======================================================== */
 function render() {
   const a = $('app');
+  const isAuthedView = Boolean(S.user && !['splash', 'onboarding', 'login'].includes(S.scr));
+  if (document.body) {
+    document.body.classList.toggle('has-user', isAuthedView);
+    document.body.classList.toggle('role-admin', Boolean(isAuthedView && S.user?.role === 'admin'));
+  }
 
   if (S.scr === 'splash') {
     a.innerHTML = splash();
@@ -3460,10 +3541,29 @@ function render() {
   } else if (S.scr === 'login' || !S.user) {
     a.innerHTML = login();
   } else {
-    a.innerHTML = ({ home, book, bk, mo, wk, pf, adm }[S.scr] || (S.user?.role === 'admin' ? adm : (S.user?.role === 'worker' ? wk : home)))() + renderModal();
+    const viewMap = {
+      home: window.home,
+      svcs: window.svcs,
+      svcDetail: window.svcDetail,
+      provider: window.providerDetail,
+      book: window.book,
+      bkConfirm: window.bkConfirm,
+      bk: window.bk,
+      mo: window.mo,
+      wk: window.wk,
+      pf: window.pf,
+      notif: window.notif,
+      adm: window.adm
+    };
+    const fallbackFn = S.user?.role === 'admin' ? window.adm : (S.user?.role === 'worker' ? window.wk : window.home);
+    const viewFn = viewMap[S.scr] || fallbackFn;
+    a.innerHTML = renderDesktopBar() + viewFn() + renderModal();
+    if (typeof window.afterCustomerRender === 'function') {
+      setTimeout(() => window.afterCustomerRender(), 30);
+    }
   }
 
-  const showNav = S.user && !['splash', 'onboarding', 'login'].includes(S.scr);
+  const showNav = isAuthedView;
   const nav = document.querySelector('.nav');
   if (nav) {
     nav.style.display = showNav ? '' : 'none';
@@ -3472,7 +3572,7 @@ function render() {
       if (S.user.role === 'admin') {
         const cur = S.admTab || 'overview';
         navDiv.innerHTML = `
-          <button id="adm-overview" onclick="setAdmTab('overview')"><span class="ni" data-i="spark"></span>Overview</button>
+          <button id="adm-overview" onclick="setAdmTab('overview')"><span class="ni" data-i="layoutDashboard"></span>Overview</button>
           <button id="adm-bookings" onclick="setAdmTab('bookings')"><span class="ni" data-i="list"></span>Bookings</button>
           <button id="adm-techs" onclick="setAdmTab('techs')"><span class="ni" data-i="tool"></span>Techs</button>
           <button id="adm-catalog" onclick="setAdmTab('catalog')"><span class="ni" data-i="tag"></span>Catalog</button>
@@ -3486,36 +3586,43 @@ function render() {
         const openComplaintsCount = (S.admComplaints || []).filter((c) => c.status === 'open').length;
         if (openComplaintsCount) $('adm-complaints')?.insertAdjacentHTML('beforeend', `<span class="dot">${openComplaintsCount}</span>`);
       } else if (S.user.role === 'worker') {
-        const cur = S.wkTab || 'jobs';
+        const cur = S.wkTab || 'home';
         navDiv.innerHTML = `
+          <button id="w-home" onclick="setWkTab('home')"><span class="ni" data-i="home"></span>Home</button>
+          <button id="w-requests" onclick="setWkTab('requests')"><span class="ni" data-i="bell"></span>Requests</button>
           <button id="w-jobs" onclick="setWkTab('jobs')"><span class="ni" data-i="tool"></span>Jobs</button>
           <button id="w-earnings" onclick="setWkTab('earnings')"><span class="ni" data-i="wallet"></span>Earnings</button>
-          <button id="w-reviews" onclick="setWkTab('reviews')"><span class="ni" data-i="star"></span>Reviews</button>
           <button id="w-profile" onclick="setWkTab('profile')"><span class="ni" data-i="user"></span>Profile</button>
         `;
+        $('w-home')?.classList.toggle('on', cur === 'home');
+        $('w-requests')?.classList.toggle('on', cur === 'requests');
         $('w-jobs')?.classList.toggle('on', cur === 'jobs');
         $('w-earnings')?.classList.toggle('on', cur === 'earnings');
-        $('w-reviews')?.classList.toggle('on', cur === 'reviews');
         $('w-profile')?.classList.toggle('on', cur === 'profile');
+        const reqCount = S.B.filter((b) => b.status === 'requested').length;
+        if (reqCount) $('w-requests')?.insertAdjacentHTML('beforeend', `<span class="dot">${reqCount > 9 ? '9+' : reqCount}</span>`);
       } else {
         navDiv.innerHTML = `
           <button id="n-home" onclick="go('home')"><span class="ni" data-i="home"></span>Home</button>
+          <button id="n-svcs" onclick="go('svcs')"><span class="ni" data-i="grid"></span>Services</button>
           <button id="n-bk" onclick="go('bk')"><span class="ni" data-i="list"></span>Bookings</button>
-          <button id="n-mo" onclick="go('mo')"><span class="ni" data-i="wallet"></span>Money</button>
+          <button id="n-notif" onclick="go('notif')"><span class="ni" data-i="bell"></span>Notifications</button>
           <button id="n-pf" onclick="go('pf')"><span class="ni" data-i="user"></span>Profile</button>
         `;
-        $('n-home')?.classList.toggle('on', S.scr === 'home' || S.scr === 'book');
+        $('n-home')?.classList.toggle('on', S.scr === 'home');
+        $('n-svcs')?.classList.toggle('on', ['svcs', 'svcDetail', 'provider', 'book', 'bkConfirm'].includes(S.scr));
         $('n-bk')?.classList.toggle('on', S.scr === 'bk');
-        $('n-mo')?.classList.toggle('on', S.scr === 'mo');
-        $('n-pf')?.classList.toggle('on', S.scr === 'pf');
+        $('n-notif')?.classList.toggle('on', S.scr === 'notif');
+        $('n-pf')?.classList.toggle('on', S.scr === 'pf' || S.scr === 'mo');
         const actCount = S.B.filter((b) => !b.paid && b.status !== 'cancelled').length;
         if (actCount) $('n-bk')?.insertAdjacentHTML('beforeend', `<span class="dot">${actCount}</span>`);
+        if (S.unreadNotifications > 0) $('n-notif')?.insertAdjacentHTML('beforeend', `<span class="dot">${S.unreadNotifications > 9 ? '9+' : S.unreadNotifications}</span>`);
       }
     }
   }
 
-  // Populate all SVG icons across DOM
-  document.querySelectorAll('.ni').forEach((e) => e.innerHTML = ic(e.dataset.i, 22));
+  // Populate all Lucide SVG icons across DOM
+  document.querySelectorAll('.ni').forEach((e) => e.innerHTML = ic(e.dataset.i, 21));
 }
 
 let _lastHash = '';
@@ -3524,6 +3631,7 @@ function dataHash() {
     s: S.scr,
     w: S.w,
     m: S.modal,
+    n: S.unreadNotifications,
     o: S.user?.online,
     b: S.B.map((b) => [b.id, b.status, b.paid, b.total, b.contact_phone, b.customer_rating]),
     t: S.tx.length
@@ -3531,7 +3639,7 @@ function dataHash() {
 }
 
 setInterval(() => {
-  if (S.user && ['bk', 'wk', 'mo', 'adm'].includes(S.scr) && !document.hidden && !S.modal && !(document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName))) {
+  if (S.user && ['bk', 'wk', 'mo', 'notif', 'adm'].includes(S.scr) && !document.hidden && !S.modal && !(document.activeElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName))) {
     refresh().then(() => {
       const h = dataHash();
       if (h !== _lastHash) {
@@ -3546,7 +3654,9 @@ setInterval(() => {
    APPLICATION BOOTSTRAP (Splash -> Onboarding -> Login -> Home)
    ======================================================== */
 (async () => {
+  applySavedTheme();
   S.scr = 'splash';
+  S.catalogLoading = true;
   render();
 
   const urlParams = new URLSearchParams(location.search);
@@ -3602,6 +3712,7 @@ setInterval(() => {
       }));
     }
   } catch (e) {}
+  S.catalogLoading = false;
 
   // 4. If session valid, fetch bookings, wallet, addresses, coupons
   if (S.user) {

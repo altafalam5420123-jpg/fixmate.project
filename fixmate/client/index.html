@@ -1,26 +1,33 @@
 <!doctype html>
-<html lang="hi">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>FixMate</title>
+<meta name="theme-color" content="#1677E8">
+<title>FixMate — Smart Home Services</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%231677E8'/%3E%3Cstop offset='100%25' stop-color='%2308A6C1'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='18' fill='url(%23g)'/%3E%3Cpath d='M16 29L32 16l16 13v17a3 3 0 0 1-3 3H19a3 3 0 0 1-3-3V29Z' fill='none' stroke='%23fff' stroke-width='4.5' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="app"></div>
-<nav class="nav"><div>
+<nav class="nav" aria-label="Primary navigation"><div>
 <button id="n-home" onclick="go('home')"><span class="ni" data-i="home"></span>Home</button>
+<button id="n-svcs" onclick="go('svcs')"><span class="ni" data-i="grid"></span>Services</button>
 <button id="n-bk" onclick="go('bk')"><span class="ni" data-i="list"></span>Bookings</button>
-<button id="n-mo" onclick="go('mo')"><span class="ni" data-i="wallet"></span>Money</button>
+<button id="n-notif" onclick="go('notif')"><span class="ni" data-i="bell"></span>Alerts</button>
 <button id="n-pf" onclick="go('pf')"><span class="ni" data-i="user"></span>Profile</button>
 </div></nav>
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="config.js"></script>
+<script src="icons.js"></script>
 <script src="app.js"></script>
+<script src="customer.js"></script>
+<script src="provider.js"></script>
 <script src="aiAssistant.js"></script>
 </body>
 </html>
