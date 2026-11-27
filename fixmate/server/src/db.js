@@ -948,13 +948,17 @@ function openDb(config = {}) {
           console.log('[PostgreSQL] Seed services inserted successfully.');
         }
 
-        // Ensure default Master Admin exists
+        // Ensure Founder/Admin exists only from env or if no admin is provisioned yet
         try {
-          await this.query(`
-            INSERT INTO users (phone, name, role, skill, wallet)
-            VALUES ('9999999999', 'FixMate Master Admin', 'admin', NULL, 10000)
-            ON CONFLICT (phone) DO UPDATE SET role = 'admin'
-          `);
+          const founderPhone = (process.env.FOUNDER_ADMIN_PHONE || '').replace(/\D/g, '');
+          if (founderPhone && /^[6-9]\d{9}$/.test(founderPhone)) {
+            await this.query(
+              `INSERT INTO users (phone, name, role, skill, wallet, account_status, verification_status, id_verified)
+               VALUES ($1, 'FixMate Founder Admin', 'admin', NULL, 10000, 'active', 'approved', 1)
+               ON CONFLICT (phone) DO UPDATE SET role = 'admin', skill = NULL, account_status = 'active'`,
+              [founderPhone]
+            );
+          }
         } catch (adminErr) {
           console.warn('[PostgreSQL Init Notice] Admin seed:', adminErr.message);
         }
