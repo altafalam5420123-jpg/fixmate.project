@@ -314,35 +314,36 @@ function login() {
   const roleChoice = L.intendedRole === 'worker' ? 'worker' : 'customer';
   if (L.step === 0) {
     return `<div class="hd hero">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        ${langSelectorHtml({ compact: true, onDark: true })}
         <button class="ic" onclick="theme()" title="Switch Light/Dark theme" aria-label="Toggle theme">${ic(isDarkTheme() ? 'sun' : 'moon', 18)}</button>
       </div>
       <div style="display:flex;justify-content:center">${fmLogo({ size: 52, onDark: true })}</div>
-      <div class="brand-badge">${ic('shieldCheck', 14)} 100% Trusted Home Services</div>
-      <div style="margin-top:6px;font-size:14px;opacity:0.92;max-width:380px;margin-left:auto;margin-right:auto">Apni zarurat chunein — ghar ki service book karein ya Service Provider ban kar kaam karein.</div>
+      <div class="brand-badge">${ic('shieldCheck', 14)} ${t('auth.badge')}</div>
+      <div style="margin-top:6px;font-size:14px;opacity:0.92;max-width:380px;margin-left:auto;margin-right:auto">${t('auth.tagline')}</div>
     </div>
     <div class="auth-card">
-      <div style="font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Select Your Panel</div>
-      <div class="auth-role-grid" role="radiogroup" aria-label="Choose account type">
+      <div style="font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">${t('auth.select_panel')}</div>
+      <div class="auth-role-grid" role="radiogroup" aria-label="${t('auth.select_panel')}">
         <button type="button" class="auth-role-card ${roleChoice === 'customer' ? 'on' : ''}" onclick="setLoginRole('customer')">
           <span class="auth-role-ico">${ic('home', 22)}</span>
-          <b>Customer Panel</b>
-          <span>Mujhe Service Chahiye</span>
+          <b>${t('auth.panel_customer_title')}</b>
+          <span>${t('auth.panel_customer_desc')}</span>
         </button>
         <button type="button" class="auth-role-card ${roleChoice === 'worker' ? 'on' : ''}" onclick="setLoginRole('worker')">
           <span class="auth-role-ico">${ic('tool', 22)}</span>
-          <b>Service Provider</b>
-          <span>Mujhe Kaam Karna Hai</span>
+          <b>${t('auth.panel_worker_title')}</b>
+          <span>${t('auth.panel_worker_desc')}</span>
         </button>
       </div>
 
-      <h2 style="margin-top:16px">${roleChoice === 'worker' ? 'Partner Mobile Login' : 'Customer Mobile Login'}</h2>
+      <h2 style="margin-top:16px">${roleChoice === 'worker' ? t('auth.login_worker') : t('auth.login_customer')}</h2>
       <div class="row">
         <span class="badge" style="padding:13px 14px;font-size:14px">+91</span>
-        <input id="ph" type="tel" inputmode="numeric" maxlength="10" placeholder="10 digit mobile number" value="${esc(L.ph)}" style="margin:0">
+        <input id="ph" type="tel" inputmode="numeric" maxlength="10" placeholder="${t('auth.phone_placeholder')}" value="${esc(L.ph)}" style="margin:0">
       </div>
-      <div class="mut" style="margin:10px 0 16px;display:flex;align-items:center;gap:6px">${ic('lock', 14)} Hum OTP bhejenge. Aapka number bilkul surakshit rahega.</div>
-      <button class="btn acc" onclick="sendOtp()">${ic('send', 16)} ${roleChoice === 'worker' ? 'Provider Login (OTP Bhejo)' : 'Customer Login (OTP Bhejo)'}</button>
+      <div class="mut" style="margin:10px 0 16px;display:flex;align-items:center;gap:6px">${ic('lock', 14)} ${t('auth.otp_note')}</div>
+      <button class="btn acc" onclick="sendOtp()">${ic('send', 16)} ${roleChoice === 'worker' ? t('auth.send_otp_worker') : t('auth.send_otp_customer')}</button>
       <div style="text-align:center;margin-top:16px">
         <button class="btn sm ghost" style="display:inline-flex;width:auto;padding:6px 14px;font-size:12px" onclick="setCustomServerUrl()" title="Configure API server endpoint">${ic('settings', 14)} Server: ${esc(getServerStatusLabel())}</button>
       </div>
@@ -351,33 +352,37 @@ function login() {
 
   if (L.step === 1) {
     const cd = (L.cooldown || 0) > 0;
-    return `<button class="back" onclick="S.lg.step=0;render()">${ic('arrowLeft', 16)} Number badlo</button>
+    return `<div class="row" style="margin-bottom:8px">
+      <button class="back" style="margin:0" onclick="S.lg.step=0;render()">${ic('arrowLeft', 16)} ${t('auth.change_number')}</button>
+      ${langSelectorHtml({ compact: true })}
+    </div>
     <div class="auth-card">
-      <div class="badge" style="margin-bottom:8px">${ic(roleChoice === 'worker' ? 'tool' : 'user', 13)} ${roleChoice === 'worker' ? 'Service Provider Login' : 'Customer Login'}</div>
-      <h2 style="font-size:22px;margin-top:0">OTP Verification</h2>
-      <div class="mut">+91 ${mk(L.ph)} pe 6 digit OTP bheja gaya hai.</div>
-      <div class="fm-alert info" style="margin-top:14px">${ic('key', 16)} <div>${L.dev ? `Demo OTP: <b style="color:var(--pri);font-size:17px">${esc(L.dev)}</b>` : 'OTP aapke mobile par SMS ke zariye bheja gaya hai.'}</div></div>
+      <div class="badge" style="margin-bottom:8px">${ic(roleChoice === 'worker' ? 'tool' : 'user', 13)} ${roleChoice === 'worker' ? t('auth.login_worker') : t('auth.login_customer')}</div>
+      <h2 style="font-size:22px;margin-top:0">${t('auth.otp_title')}</h2>
+      <div class="mut">${t('auth.otp_sent_to', { phone: mk(L.ph) })}</div>
+      <div class="fm-alert info" style="margin-top:14px">${ic('key', 16)} <div>${L.dev ? `${t('auth.demo_otp')}: <b style="color:var(--pri);font-size:17px">${esc(L.dev)}</b>` : t('auth.sms_otp')}</div></div>
       <input id="otp" type="tel" inputmode="numeric" maxlength="6" placeholder="------" style="margin:8px 0 14px;text-align:center;font-size:28px;letter-spacing:10px;font-weight:800">
-      <button class="btn acc" onclick="verOtp()">${ic('checkCircle', 16)} Verify Karein</button>
-      <button id="resend-btn" class="btn ghost" style="margin-top:10px;${cd ? 'opacity:0.6;cursor:not-allowed' : ''}" ${cd ? 'disabled' : ''} onclick="sendOtp(1)">${ic('refresh', 15)} ${cd ? `OTP dobara bhejo (${L.cooldown}s)` : 'OTP dobara bhejo'}</button>
+      <button class="btn acc" onclick="verOtp()">${ic('checkCircle', 16)} ${t('auth.verify')}</button>
+      <button id="resend-btn" class="btn ghost" style="margin-top:10px;${cd ? 'opacity:0.6;cursor:not-allowed' : ''}" ${cd ? 'disabled' : ''} onclick="sendOtp(1)">${ic('refresh', 15)} ${cd ? t('auth.resend_wait', { sec: L.cooldown }) : t('auth.resend')}</button>
     </div>`;
   }
 
   return `<div class="auth-card" style="margin-top:20px">
-  <div class="badge ok" style="margin-bottom:10px">${ic('checkCircle', 14)} Mobile Verified</div>
-  <h2 style="font-size:22px;margin-top:0">${roleChoice === 'worker' ? 'Service Provider Registration' : 'Customer Account Setup'}</h2>
-  <div class="mut" style="margin-bottom:14px">Bas ek step baaki hai apna FixMate ${roleChoice === 'worker' ? 'Partner' : 'Customer'} account shuru karne ke liye.</div>
-  <label for="nm" style="font-weight:700;font-size:13.5px">Aapka Poora Naam</label>
-  <input id="nm" placeholder="Full name" style="margin-top:6px;margin-bottom:12px">
+  <div style="margin-bottom:12px">${langSelectorHtml({ compact: true })}</div>
+  <div class="badge ok" style="margin-bottom:10px">${ic('checkCircle', 14)} ${t('auth.verified_badge')}</div>
+  <h2 style="font-size:22px;margin-top:0">${roleChoice === 'worker' ? t('auth.signup_worker_title') : t('auth.signup_customer_title')}</h2>
+  <div class="mut" style="margin-bottom:14px">${t('auth.signup_sub')}</div>
+  <label for="nm" style="font-weight:700;font-size:13.5px">${t('auth.full_name')}</label>
+  <input id="nm" placeholder="${t('auth.full_name_ph')}" style="margin-top:6px;margin-bottom:12px">
   ${roleChoice === 'worker' ? `
-    <label for="sk" style="font-weight:700;font-size:13.5px">Apna Kaam / Primary Skill Chunein</label>
+    <label for="sk" style="font-weight:700;font-size:13.5px">${t('auth.primary_skill')}</label>
     <select id="sk" style="margin-top:6px;margin-bottom:14px">${CATS.map((c) => `<option>${c}</option>`).join('')}</select>
-    <button class="btn acc" onclick="fin2('worker')">${ic('tool', 16)} Service Provider Account Shuru Karein</button>
-    <button class="btn ghost" style="margin-top:10px" onclick="setLoginRole('customer')">${ic('user', 16)} Mujhe Service Chahiye (Customer Bano)</button>
-    <div class="mut" style="margin-top:12px;display:flex;align-items:center;gap:6px;font-size:12px">${ic('shield', 14)} Provider ki ID aur verification ke baad hi requests milengi.</div>
+    <button class="btn acc" onclick="fin2('worker')">${ic('tool', 16)} ${t('auth.start_worker')}</button>
+    <button class="btn ghost" style="margin-top:10px" onclick="setLoginRole('customer')">${ic('user', 16)} ${t('auth.switch_to_customer')}</button>
+    <div class="mut" style="margin-top:12px;display:flex;align-items:center;gap:6px;font-size:12px">${ic('shield', 14)} ${t('auth.provider_kyc_note')}</div>
   ` : `
-    <button class="btn acc" onclick="fin2('customer')">${ic('user', 16)} Customer Account Shuru Karein</button>
-    <button class="btn ghost" style="margin-top:10px" onclick="setLoginRole('worker')">${ic('tool', 16)} Service Provider Ban Kar Kaam Lein</button>
+    <button class="btn acc" onclick="fin2('customer')">${ic('user', 16)} ${t('auth.start_customer')}</button>
+    <button class="btn ghost" style="margin-top:10px" onclick="setLoginRole('worker')">${ic('tool', 16)} ${t('auth.switch_to_worker')}</button>
   `}
   </div>`;
 }
@@ -416,7 +421,7 @@ function sendOtp(re) {
   if (!re) {
     ph = $('ph').value.replace(/\D/g, '');
     if (!/^[6-9]\d{9}$/.test(ph)) {
-      toast('Sahi 10 digit mobile number daalo');
+      toast(t('val.phone'));
       return;
     }
   }
@@ -427,7 +432,7 @@ function sendOtp(re) {
     L.step = 1;
     render();
     startOtpCooldown();
-    if (re) toast(d.message || 'Naya OTP bhej diya');
+    if (re) toast(d.message || t('auth.otp_sent_to', { phone: ph }));
   });
 }
 
@@ -435,7 +440,7 @@ function verOtp() {
   const L = S.lg, v = $('otp').value.trim();
   L.v = v;
   if (!/^\d{6}$/.test(v)) {
-    toast('6 digit ka OTP daalein');
+    toast(t('val.otp'));
     return;
   }
   act(async () => {
@@ -455,16 +460,26 @@ function verOtp() {
 function fin2(role) {
   const n = $('nm').value.trim();
   if (n.length < 2) {
-    toast('Apna naam likho');
+    toast(t('val.name'));
     return;
   }
-  act(async () => signedIn(await api('POST', '/auth/otp/verify', { phone: S.lg.ph, otp: S.lg.v, name: n, role, skill: role === 'worker' ? $('sk').value : undefined })));
+  act(async () => signedIn(await api('POST', '/auth/otp/verify', {
+    phone: S.lg.ph,
+    otp: S.lg.v,
+    name: n,
+    role,
+    skill: role === 'worker' ? $('sk').value : undefined,
+    language: getLang()
+  })));
 }
 
 async function signedIn(d) {
   const chosenRole = S.lg?.intendedRole;
   S.token = d.token;
   S.user = d.user;
+  if (d.user?.language && typeof setLang === 'function') {
+    await setLang(d.user.language, false);
+  }
   try { localStorage.setItem('fm_auth', JSON.stringify({ t: d.token, u: d.user })); } catch (e) {}
   S.scr = d.user.role === 'worker' ? 'wk' : (d.user.role === 'admin' ? 'adm' : 'home');
   await refresh();
@@ -530,27 +545,27 @@ function renderDesktopBar() {
   if (!S.user || S.user.role === 'admin') return '';
   const isWk = S.user.role === 'worker';
   const links = isWk ? [
-    { id: 'home', label: 'Home', icon: 'home', active: (S.wkTab || 'home') === 'home', click: "setWkTab('home')" },
-    { id: 'requests', label: 'Requests', icon: 'bell', active: S.wkTab === 'requests', click: "setWkTab('requests')", badge: S.B.filter((b) => b.status === 'requested').length },
-    { id: 'jobs', label: 'Jobs', icon: 'tool', active: S.wkTab === 'jobs', click: "setWkTab('jobs')" },
-    { id: 'earnings', label: 'Earnings', icon: 'wallet', active: S.wkTab === 'earnings', click: "setWkTab('earnings')" },
-    { id: 'profile', label: 'Profile', icon: 'user', active: S.wkTab === 'profile', click: "setWkTab('profile')" }
+    { id: 'home', label: t('nav.home'), icon: 'home', active: (S.wkTab || 'home') === 'home', click: "setWkTab('home')" },
+    { id: 'requests', label: t('nav.requests'), icon: 'bell', active: S.wkTab === 'requests', click: "setWkTab('requests')", badge: S.B.filter((b) => b.status === 'requested').length },
+    { id: 'jobs', label: t('nav.jobs'), icon: 'tool', active: S.wkTab === 'jobs', click: "setWkTab('jobs')" },
+    { id: 'earnings', label: t('nav.earnings'), icon: 'wallet', active: S.wkTab === 'earnings', click: "setWkTab('earnings')" },
+    { id: 'profile', label: t('nav.profile'), icon: 'user', active: S.wkTab === 'profile', click: "setWkTab('profile')" }
   ] : [
-    { id: 'home', label: 'Home', icon: 'home', active: S.scr === 'home', click: "go('home')" },
-    { id: 'svcs', label: 'Services', icon: 'grid', active: ['svcs', 'svcDetail', 'provider', 'book', 'bkConfirm'].includes(S.scr), click: "go('svcs')" },
-    { id: 'bk', label: 'Bookings', icon: 'list', active: S.scr === 'bk', click: "go('bk')" },
-    { id: 'notif', label: 'Notifications', icon: 'bell', active: S.scr === 'notif', click: "go('notif')", badge: S.unreadNotifications },
-    { id: 'pf', label: 'Profile', icon: 'user', active: S.scr === 'pf' || S.scr === 'mo', click: "go('pf')" }
+    { id: 'home', label: t('nav.home'), icon: 'home', active: S.scr === 'home', click: "go('home')" },
+    { id: 'svcs', label: t('nav.services'), icon: 'grid', active: ['svcs', 'svcDetail', 'provider', 'book', 'bkConfirm'].includes(S.scr), click: "go('svcs')" },
+    { id: 'bk', label: t('nav.bookings'), icon: 'list', active: S.scr === 'bk', click: "go('bk')" },
+    { id: 'notif', label: t('nav.notifications'), icon: 'bell', active: S.scr === 'notif', click: "go('notif')", badge: S.unreadNotifications },
+    { id: 'pf', label: t('nav.profile'), icon: 'user', active: S.scr === 'pf' || S.scr === 'mo', click: "go('pf')" }
   ];
   return `<header class="fm-desktop-bar">
-    <div>${fmLogo({ size: 34, subtitle: isWk ? 'Service Partner' : 'Customer App' })}</div>
+    <div>${fmLogo({ size: 34, subtitle: isWk ? t('auth.panel_worker_title') : t('auth.panel_customer_title') })}</div>
     <nav class="fm-desktop-links" aria-label="Desktop navigation">
       ${links.map((l) => `<button class="fm-desktop-link ${l.active ? 'on' : ''}" onclick="${l.click}">${ic(l.icon, 16)} ${l.label}${l.badge ? ` <span class="badge bad" style="padding:1px 6px;font-size:10px">${l.badge > 9 ? '9+' : l.badge}</span>` : ''}</button>`).join('')}
     </nav>
     <div class="fm-desktop-actions">
       ${!isWk ? `<button class="fm-icon-btn" onclick="go('mo')" title="FixMate Wallet (${inr(S.w)})" aria-label="Wallet">${ic('wallet', 18)}</button>` : ''}
       <button class="fm-icon-btn" onclick="theme()" title="Toggle Light/Dark theme" aria-label="Toggle theme">${ic(isDarkTheme() ? 'sun' : 'moon', 18)}</button>
-      <button class="btn sm ghost" onclick="out()" title="Logout">${ic('logOut', 15)} Logout</button>
+      <button class="btn sm ghost" onclick="out()" title="${t('common.logout')}">${ic('logOut', 15)} ${t('common.logout')}</button>
     </div>
   </header>`;
 }
@@ -3421,7 +3436,11 @@ async function api(m, p, b) {
   try {
     r = await fetch(API + '/api' + p, {
       method: m,
-      headers: { 'Content-Type': 'application/json', ...(S.token ? { Authorization: 'Bearer ' + S.token } : {}) },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-lang': typeof getLang === 'function' ? getLang() : 'en',
+        ...(S.token ? { Authorization: 'Bearer ' + S.token } : {})
+      },
       body: b ? JSON.stringify(b) : undefined,
       signal: controller.signal
     });
@@ -3648,11 +3667,11 @@ function render() {
       if (S.user.role === 'admin') {
         const cur = S.admTab || 'overview';
         navDiv.innerHTML = `
-          <button id="adm-overview" onclick="setAdmTab('overview')"><span class="ni" data-i="layoutDashboard"></span>Overview</button>
-          <button id="adm-bookings" onclick="setAdmTab('bookings')"><span class="ni" data-i="list"></span>Bookings</button>
-          <button id="adm-techs" onclick="setAdmTab('techs')"><span class="ni" data-i="tool"></span>Providers</button>
-          <button id="adm-customers" onclick="setAdmTab('customers')"><span class="ni" data-i="users"></span>Customers</button>
-          <button id="adm-audit" onclick="setAdmTab('audit')"><span class="ni" data-i="shield"></span>Console</button>
+          <button id="adm-overview" onclick="setAdmTab('overview')"><span class="ni" data-i="layoutDashboard"></span>${t('nav.overview')}</button>
+          <button id="adm-bookings" onclick="setAdmTab('bookings')"><span class="ni" data-i="list"></span>${t('nav.bookings')}</button>
+          <button id="adm-techs" onclick="setAdmTab('techs')"><span class="ni" data-i="tool"></span>${t('nav.providers')}</button>
+          <button id="adm-customers" onclick="setAdmTab('customers')"><span class="ni" data-i="users"></span>${t('nav.customers')}</button>
+          <button id="adm-audit" onclick="setAdmTab('audit')"><span class="ni" data-i="shield"></span>${t('nav.console')}</button>
         `;
         $('adm-overview')?.classList.toggle('on', cur === 'overview');
         $('adm-bookings')?.classList.toggle('on', cur === 'bookings');
@@ -3664,11 +3683,11 @@ function render() {
       } else if (S.user.role === 'worker') {
         const cur = S.wkTab || 'home';
         navDiv.innerHTML = `
-          <button id="w-home" onclick="setWkTab('home')"><span class="ni" data-i="home"></span>Home</button>
-          <button id="w-requests" onclick="setWkTab('requests')"><span class="ni" data-i="bell"></span>Requests</button>
-          <button id="w-jobs" onclick="setWkTab('jobs')"><span class="ni" data-i="tool"></span>Jobs</button>
-          <button id="w-earnings" onclick="setWkTab('earnings')"><span class="ni" data-i="wallet"></span>Earnings</button>
-          <button id="w-profile" onclick="setWkTab('profile')"><span class="ni" data-i="user"></span>Profile</button>
+          <button id="w-home" onclick="setWkTab('home')"><span class="ni" data-i="home"></span>${t('nav.home')}</button>
+          <button id="w-requests" onclick="setWkTab('requests')"><span class="ni" data-i="bell"></span>${t('nav.requests')}</button>
+          <button id="w-jobs" onclick="setWkTab('jobs')"><span class="ni" data-i="tool"></span>${t('nav.jobs')}</button>
+          <button id="w-earnings" onclick="setWkTab('earnings')"><span class="ni" data-i="wallet"></span>${t('nav.earnings')}</button>
+          <button id="w-profile" onclick="setWkTab('profile')"><span class="ni" data-i="user"></span>${t('nav.profile')}</button>
         `;
         $('w-home')?.classList.toggle('on', cur === 'home');
         $('w-requests')?.classList.toggle('on', cur === 'requests');
@@ -3679,11 +3698,11 @@ function render() {
         if (reqCount) $('w-requests')?.insertAdjacentHTML('beforeend', `<span class="dot">${reqCount > 9 ? '9+' : reqCount}</span>`);
       } else {
         navDiv.innerHTML = `
-          <button id="n-home" onclick="go('home')"><span class="ni" data-i="home"></span>Home</button>
-          <button id="n-svcs" onclick="go('svcs')"><span class="ni" data-i="grid"></span>Services</button>
-          <button id="n-bk" onclick="go('bk')"><span class="ni" data-i="list"></span>Bookings</button>
-          <button id="n-notif" onclick="go('notif')"><span class="ni" data-i="bell"></span>Notifications</button>
-          <button id="n-pf" onclick="go('pf')"><span class="ni" data-i="user"></span>Profile</button>
+          <button id="n-home" onclick="go('home')"><span class="ni" data-i="home"></span>${t('nav.home')}</button>
+          <button id="n-svcs" onclick="go('svcs')"><span class="ni" data-i="grid"></span>${t('nav.services')}</button>
+          <button id="n-bk" onclick="go('bk')"><span class="ni" data-i="list"></span>${t('nav.bookings')}</button>
+          <button id="n-notif" onclick="go('notif')"><span class="ni" data-i="bell"></span>${t('nav.notifications')}</button>
+          <button id="n-pf" onclick="go('pf')"><span class="ni" data-i="user"></span>${t('nav.profile')}</button>
         `;
         $('n-home')?.classList.toggle('on', S.scr === 'home');
         $('n-svcs')?.classList.toggle('on', ['svcs', 'svcDetail', 'provider', 'book', 'bkConfirm'].includes(S.scr));
@@ -3758,6 +3777,9 @@ setInterval(() => {
       const me = await api('GET', '/me');
       S.user = me.user;
       S.w = me.wallet;
+      if (me.user?.language && typeof setLang === 'function') {
+        await setLang(me.user.language, false);
+      }
     } catch (e) {
       S.token = null;
       S.user = null;

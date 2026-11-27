@@ -111,10 +111,10 @@
       <div>
         <b style="font-size:15px;display:flex;align-items:center;gap:7px">
           <span style="width:9px;height:9px;border-radius:50%;background:${on ? 'var(--ok)' : 'var(--mut)'}"></span>
-          ${on ? 'Online (Available for Bookings)' : 'Offline (Duty Off)'}
+          ${on ? t('prov.online_title') : t('prov.offline_title')}
         </b>
         <div class="mut" style="font-size:12px">
-          ${!approved ? 'Verification approve hone par booking requests shuru hongi' : (on ? 'Naye customer booking requests aapke feed mein aa rahi hain' : 'Online toggle karein naye requests dekhne ke liye')}
+          ${!approved ? t('auth.provider_kyc_note') : (on ? t('prov.online_sub') : t('prov.offline_sub'))}
         </div>
       </div>
       <button class="tg ${on ? 'on' : ''}" onclick="setOnline(${!on})" aria-label="Online status toggle"></button>
@@ -123,31 +123,31 @@
     <div class="wk-kpi-grid">
       <div class="wk-kpi-card" onclick="setWkTab('requests')" style="cursor:pointer">
         <div class="wk-kpi-val">${open.length}</div>
-        <div class="wk-kpi-lbl">New Requests</div>
+        <div class="wk-kpi-lbl">${t('prov.new_requests')}</div>
       </div>
       <div class="wk-kpi-card" onclick="S.wkJobsTab='upcoming';setWkTab('jobs')" style="cursor:pointer">
         <div class="wk-kpi-val">${st.upcoming_jobs != null ? st.upcoming_jobs : upcoming.length}</div>
-        <div class="wk-kpi-lbl">Upcoming Jobs</div>
+        <div class="wk-kpi-lbl">${t('prov.upcoming_jobs')}</div>
       </div>
       <div class="wk-kpi-card" onclick="S.wkJobsTab='active';setWkTab('jobs')" style="cursor:pointer">
         <div class="wk-kpi-val">${st.in_progress_jobs != null ? st.in_progress_jobs : inMotion.length}</div>
-        <div class="wk-kpi-lbl">Active Jobs</div>
+        <div class="wk-kpi-lbl">${t('prov.active_jobs')}</div>
       </div>
       <div class="wk-kpi-card" onclick="S.wkJobsTab='completed';setWkTab('jobs')" style="cursor:pointer">
         <div class="wk-kpi-val">${st.completed_jobs || 0}</div>
-        <div class="wk-kpi-lbl">Completed</div>
+        <div class="wk-kpi-lbl">${t('prov.completed')}</div>
       </div>
       <div class="wk-kpi-card" onclick="setWkTab('earnings')" style="cursor:pointer">
         <div class="wk-kpi-val">${inr(S.w)}</div>
-        <div class="wk-kpi-lbl">Wallet Balance</div>
+        <div class="wk-kpi-lbl">${t('prov.wallet_bal')}</div>
       </div>
       <div class="wk-kpi-card" onclick="S.wkEarnTab='reviews';setWkTab('earnings')" style="cursor:pointer">
         <div class="wk-kpi-val">${st.avg_rating ? st.avg_rating : 'New'}</div>
-        <div class="wk-kpi-lbl">${st.review_count || 0} Reviews</div>
+        <div class="wk-kpi-lbl">${st.review_count || 0} ${t('prov.reviews')}</div>
       </div>
     </div>
 
-    <h2 style="font-size:16px;margin:16px 0 8px">Quick Actions</h2>
+    <h2 style="font-size:16px;margin:16px 0 8px">${t('prov.quick_actions')}</h2>
     <div class="wk-quick-grid">
       <button class="card wk-quick-btn" onclick="setWkTab('requests')">
         <span class="wk-q-ico">${ic('bell', 18)}</span>
@@ -186,17 +186,17 @@
 
     return `<div class="row" style="margin-bottom:12px">
       <div>
-        <h2 style="margin:0;font-size:21px">New Booking Requests</h2>
-        <div class="mut" style="font-size:12px">Customer contact aur exact address accept karne ke baad unlock hota hai.</div>
+        <h2 style="margin:0;font-size:21px">${t('prov.requests_title')}</h2>
+        <div class="mut" style="font-size:12px">${t('prov.online_sub')}</div>
       </div>
       <button class="tg ${on ? 'on' : ''}" onclick="setOnline(${!on})" title="Online/Offline toggle"></button>
     </div>
 
     ${verifBannerHtml(u)}
 
-    ${!approved ? emptyBox('shield', 'Verification Approval Required', 'Sirf approved service providers hi booking requests accept kar sakte hain.', `<button class="btn sm acc" style="width:auto" onclick="S.wkProfileTab='verification';setWkTab('profile')">Upload Verification Docs</button>`) : (
-      !on ? `<div class="fm-alert warning">${ic('alertTriangle', 16)} Aap abhi Offline hain. Naye booking requests accept karne ke liye Online toggle ON karein.</div>` : (
-        open.length ? open.map((b) => wreqCard(b)).join('') : emptyBox('bell', 'Abhi koi naya request nahi hai', 'Aapki selected categories mein naye customer requests yahan dikhai denge.')
+    ${!approved ? emptyBox('shield', trStatus(verifStatusOf(u)), t('auth.provider_kyc_note'), `<button class="btn sm acc" style="width:auto" onclick="S.wkProfileTab='verification';setWkTab('profile')">${t('prov.tab_verification')}</button>`) : (
+      !on ? `<div class="fm-alert warning">${ic('alertTriangle', 16)} ${t('prov.offline_sub')}</div>` : (
+        open.length ? open.map((b) => wreqCard(b)).join('') : emptyBox('bell', t('prov.empty_requests'), t('prov.empty_requests_desc'))
       )
     )}`;
   }
@@ -225,11 +225,11 @@
       ${b.photo_url ? `<img src="${b.photo_url}" class="photo-preview-thumb" style="max-height:110px;margin-bottom:8px" alt="Issue photo">` : ''}
 
       <div class="row" style="margin-top:10px;gap:8px">
-        <button class="btn sm acc" style="flex:2" ${!approved ? 'disabled' : ''} onclick="post(${b.id},'accept',null,'Booking accept kar li gayi! Customer details unlock ho gayi hain.')">
-          ${ic('checkCircle', 15)} Accept Booking
+        <button class="btn sm acc" style="flex:2" ${!approved ? 'disabled' : ''} onclick="post(${b.id},'accept',null,'Booking accepted!')">
+          ${ic('checkCircle', 15)} ${t('prov.accept_booking')}
         </button>
         <button class="btn sm ghost" style="flex:1;color:var(--bad)" onclick="wkRejectJob(${b.id})">
-          ${ic('xCircle', 15)} Reject
+          ${ic('xCircle', 15)} ${t('prov.reject_booking')}
         </button>
       </div>
     </div>`;
@@ -254,18 +254,18 @@
     const map = { upcoming, active, completed, cancelled };
     const list = map[tab] || upcoming;
 
-    return `<h2 style="margin:0 0 10px;font-size:21px">My Jobs & Lifecycle</h2>
+    return `<h2 style="margin:0 0 10px;font-size:21px">${t('prov.my_jobs')}</h2>
     <div class="seg" style="margin-bottom:14px">
-      <button class="pill ${tab === 'upcoming' ? 'on' : ''}" onclick="S.wkJobsTab='upcoming';render()">Upcoming (${upcoming.length})</button>
-      <button class="pill ${tab === 'active' ? 'on' : ''}" onclick="S.wkJobsTab='active';render()">Active (${active.length})</button>
-      <button class="pill ${tab === 'completed' ? 'on' : ''}" onclick="S.wkJobsTab='completed';render()">Completed (${completed.length})</button>
-      <button class="pill ${tab === 'cancelled' ? 'on' : ''}" onclick="S.wkJobsTab='cancelled';render()">Cancelled (${cancelled.length})</button>
+      <button class="pill ${tab === 'upcoming' ? 'on' : ''}" onclick="S.wkJobsTab='upcoming';render()">${t('prov.upcoming')} (${upcoming.length})</button>
+      <button class="pill ${tab === 'active' ? 'on' : ''}" onclick="S.wkJobsTab='active';render()">${t('prov.active')} (${active.length})</button>
+      <button class="pill ${tab === 'completed' ? 'on' : ''}" onclick="S.wkJobsTab='completed';render()">${t('prov.completed')} (${completed.length})</button>
+      <button class="pill ${tab === 'cancelled' ? 'on' : ''}" onclick="S.wkJobsTab='cancelled';render()">${t('prov.cancelled')} (${cancelled.length})</button>
     </div>
 
     ${list.length ? list.map(window.wcard).join('') : emptyBox(
       tab === 'cancelled' ? 'xCircle' : 'tool',
-      `No ${tab} jobs`,
-      tab === 'upcoming' ? 'Approved requests accept karne par Upcoming Jobs yahan dikhengi.' : 'Is category mein abhi koi job nahi hai.'
+      t('prov.empty_jobs'),
+      ''
     )}`;
   }
 
@@ -500,7 +500,7 @@
       day_of_week: d, is_available: d !== 0, start_time: '09:00', end_time: '20:00'
     }));
 
-    return `<h2 style="margin:0 0 12px;font-size:21px">Provider Profile & Settings</h2>
+    return `<h2 style="margin:0 0 12px;font-size:21px">${t('prov.profile_settings')}</h2>
 
     <div class="card row" style="justify-content:flex-start;margin-bottom:12px">
       <div class="av">${esc((u.name || 'P')[0].toUpperCase())}</div>
@@ -512,10 +512,10 @@
     </div>
 
     <div class="seg" style="margin-bottom:14px">
-      <button class="pill ${tab === 'profile' ? 'on' : ''}" onclick="S.wkProfileTab='profile';render()">Profile & Pricing</button>
-      <button class="pill ${tab === 'availability' ? 'on' : ''}" onclick="S.wkProfileTab='availability';render()">Availability</button>
-      <button class="pill ${tab === 'verification' ? 'on' : ''}" onclick="S.wkProfileTab='verification';render()">Verification</button>
-      <button class="pill ${tab === 'settings' ? 'on' : ''}" onclick="S.wkProfileTab='settings';render()">Settings</button>
+      <button class="pill ${tab === 'profile' ? 'on' : ''}" onclick="S.wkProfileTab='profile';render()">${t('prov.tab_profile')}</button>
+      <button class="pill ${tab === 'availability' ? 'on' : ''}" onclick="S.wkProfileTab='availability';render()">${t('prov.tab_availability')}</button>
+      <button class="pill ${tab === 'verification' ? 'on' : ''}" onclick="S.wkProfileTab='verification';render()">${t('prov.tab_verification')}</button>
+      <button class="pill ${tab === 'settings' ? 'on' : ''}" onclick="S.wkProfileTab='settings';render()">${t('prov.tab_settings')}</button>
     </div>
 
     ${tab === 'profile' ? `
@@ -624,33 +624,34 @@
 
     ${tab === 'settings' ? `
       <div class="card" style="margin-bottom:12px">
-        <h3 style="margin:0 0 10px;font-size:16px">Language Settings</h3>
-        <select id="wk-lang" style="margin-bottom:10px">
+        <h3 style="margin:0 0 10px;font-size:16px">${t('cust.lang_settings')}</h3>
+        <div style="margin-bottom:10px">${langSelectorHtml()}</div>
+        <select id="wk-lang" style="margin-bottom:10px" onchange="setLang(this.value)">
           <option value="en" ${(u.language || 'en') === 'en' ? 'selected' : ''}>English</option>
           <option value="hi" ${u.language === 'hi' ? 'selected' : ''}>Hindi (हिन्दी)</option>
           <option value="hinglish" ${u.language === 'hinglish' ? 'selected' : ''}>Hinglish</option>
         </select>
-        <button class="btn sm acc" onclick="saveWorkerLanguage()">${ic('globe', 15)} Save Language</button>
+        <button class="btn sm acc" onclick="saveWorkerLanguage()">${ic('globe', 15)} ${t('common.save')}</button>
       </div>
 
       <div class="card" style="margin-bottom:12px">
-        <h3 style="margin:0 0 10px;font-size:16px">Password Management</h3>
+        <h3 style="margin:0 0 10px;font-size:16px">${t('cust.password_mgmt')}</h3>
         ${u.has_password ? `<input id="wk-pw-cur" type="password" placeholder="Current password" style="margin-bottom:8px">` : ''}
         <input id="wk-pw-new" type="password" placeholder="New password (min 8 characters)" style="margin-bottom:10px">
         <button class="btn sm acc" onclick="saveWorkerPassword()">${ic('lock', 15)} ${u.has_password ? 'Change Password' : 'Set Password'}</button>
       </div>
 
       <div class="card" style="margin-bottom:12px">
-        <h3 style="margin:0 0 8px;font-size:16px">Partner Support</h3>
-        <div class="mut" style="font-size:12.5px;margin-bottom:10px">Kisi bhi booking, payment ya verification help ke liye FixMate Partner Support se baat karein.</div>
+        <h3 style="margin:0 0 8px;font-size:16px">${t('prov.partner_support')}</h3>
+        <div class="mut" style="font-size:12.5px;margin-bottom:10px">${t('cust.support_section')}</div>
         <div class="row" style="gap:8px;margin-bottom:10px">
-          <a href="tel:+919999999999" class="btn sm ghost" style="flex:1;text-decoration:none">${ic('phone', 14)} Helpline</a>
-          <a href="mailto:support@fixmate.in" class="btn sm ghost" style="flex:1;text-decoration:none">${ic('mail', 14)} Email Support</a>
+          <a href="tel:+917209612650" class="btn sm ghost" style="flex:1;text-decoration:none">${ic('phone', 14)} ${t('common.helpline')}</a>
+          <a href="mailto:support@fixmate.in" class="btn sm ghost" style="flex:1;text-decoration:none">${ic('mail', 14)} ${t('common.email_support')}</a>
         </div>
         <button class="btn sm sec" style="width:100%" onclick="openComplaintModal()">${ic('messageSquare', 15)} Raise Partner Support Ticket</button>
       </div>
 
-      <button class="btn ghost" style="width:100%;color:var(--bad);margin-bottom:8px" onclick="out()">${ic('logOut', 16)} Logout</button>
+      <button class="btn ghost" style="width:100%;color:var(--bad);margin-bottom:8px" onclick="out()">${ic('logOut', 16)} ${t('common.logout')}</button>
       <button class="btn sm ghost" style="width:100%" onclick="logoutAllDevices()">${ic('shield', 15)} Logout All Devices</button>
     ` : ''}`;
   }
@@ -764,15 +765,7 @@
   window.saveWorkerLanguage = function () {
     const language = $('wk-lang')?.value || 'en';
     act(async () => {
-      const res = await api('PUT', '/me/profile', { language });
-      S.user = res.user;
-      try {
-        const stored = JSON.parse(localStorage.getItem('fm_auth') || '{}');
-        stored.u = res.user;
-        localStorage.setItem('fm_auth', JSON.stringify(stored));
-      } catch (e) {}
-      render();
-      toast('Language preference save ho gayi');
+      await setLang(language, true);
     });
   };
 
@@ -780,14 +773,14 @@
     const current_password = $('wk-pw-cur')?.value || undefined;
     const new_password = ($('wk-pw-new')?.value || '').trim();
     if (new_password.length < 8) {
-      toast('Naya password kam se kam 8 characters ka hona chahiye');
+      toast(t('val.password_len'));
       return;
     }
     act(async () => {
       const res = await api('PUT', '/me/password', { current_password, new_password });
       S.user.has_password = true;
       render();
-      toast(res.message || 'Password update ho gaya');
+      toast(res.message || t('val.password_saved'));
     });
   };
 })();

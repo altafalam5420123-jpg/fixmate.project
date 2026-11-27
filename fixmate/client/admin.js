@@ -105,21 +105,21 @@
     const pendingVerif = S.admAnalytics?.pending_provider_verifications || 0;
 
     const navItems = [
-      { id: 'overview', label: 'Overview & Analytics', icon: 'layoutDashboard' },
-      { id: 'bookings', label: 'Bookings', icon: 'list' },
-      { id: 'techs', label: 'Providers', icon: 'tool', badge: pendingVerif },
-      { id: 'customers', label: 'Customers', icon: 'users' },
-      { id: 'catalog', label: 'Catalog & Categories', icon: 'tag' },
-      { id: 'payments', label: 'Payments & Refunds', icon: 'wallet' },
-      { id: 'complaints', label: 'Reviews & Support', icon: 'alert', badge: openComplaints },
-      { id: 'notifications', label: 'Notifications', icon: 'bell' },
-      { id: 'audit', label: 'Audit Logs & Settings', icon: 'shield' }
+      { id: 'overview', label: t('adm.overview'), icon: 'layoutDashboard' },
+      { id: 'bookings', label: t('adm.bookings'), icon: 'list' },
+      { id: 'techs', label: t('adm.providers'), icon: 'tool', badge: pendingVerif },
+      { id: 'customers', label: t('adm.customers'), icon: 'users' },
+      { id: 'catalog', label: t('adm.catalog'), icon: 'tag' },
+      { id: 'payments', label: t('adm.payments'), icon: 'wallet' },
+      { id: 'complaints', label: t('adm.support'), icon: 'alert', badge: openComplaints },
+      { id: 'notifications', label: t('adm.notifications'), icon: 'bell' },
+      { id: 'audit', label: t('adm.audit'), icon: 'shield' }
     ];
 
     return `<div class="adm-shell">
       <aside class="adm-sidebar" aria-label="Founder Admin navigation">
         <div style="padding:4px 4px 12px;border-bottom:1.5px solid var(--bd)">
-          ${fmLogo({ size: 34, subtitle: 'Founder Console' })}
+          ${fmLogo({ size: 34, subtitle: t('adm.console_badge') })}
         </div>
         <nav class="adm-side-nav">
           ${navItems.map((it) => `
@@ -136,7 +136,7 @@
           </div>
           <div class="row" style="gap:6px">
             <button class="btn sm ghost" style="flex:1" onclick="theme()" title="Toggle theme">${ic(isDarkTheme() ? 'sun' : 'moon', 15)}</button>
-            <button class="btn sm ghost" style="flex:2;color:var(--bad)" onclick="out()">${ic('logOut', 15)} Logout</button>
+            <button class="btn sm ghost" style="flex:2;color:var(--bad)" onclick="out()">${ic('logOut', 15)} ${t('common.logout')}</button>
           </div>
         </div>
       </aside>
@@ -145,15 +145,16 @@
         <div class="adm-hero">
           <div class="row">
             <div>
-              <span class="brand-badge" style="margin:0 0 6px">${ic('shieldCheck', 13)} Founder / Admin Console</span>
-              <h2 style="font-size:21px;margin:0 0 2px;color:#fff">FixMate Operations Control</h2>
+              <span class="brand-badge" style="margin:0 0 6px">${ic('shieldCheck', 13)} ${t('adm.console_badge')}</span>
+              <h2 style="font-size:21px;margin:0 0 2px;color:#fff">${t('adm.console_title')}</h2>
               <div style="font-size:12.5px;opacity:0.9">${esc(u.name)} · Live Database Telemetry</div>
             </div>
-            <div class="ics">
-              <button class="ic" onclick="refresh().then(render);toast('Dashboard refreshed')" title="Refresh data" aria-label="Refresh">${ic('refresh', 18)}</button>
+            <div class="ics" style="flex-wrap:wrap;justify-content:flex-end">
+              ${langSelectorHtml({ compact: true, onDark: true })}
+              <button class="ic" onclick="refresh().then(render);toast('${t('adm.refresh')}')" title="${t('adm.refresh')}" aria-label="${t('adm.refresh')}">${ic('refresh', 18)}</button>
               <button class="ic" onclick="theme()" title="Toggle theme" aria-label="Toggle theme">${ic(isDarkTheme() ? 'sun' : 'moon', 18)}</button>
               <button class="btn sm ghost" style="background:rgba(255,255,255,0.16);color:#fff;border-color:rgba(255,255,255,0.3)" onclick="out()">
-                ${ic('logOut', 15)} Logout
+                ${ic('logOut', 15)} ${t('common.logout')}
               </button>
             </div>
           </div>
@@ -705,28 +706,29 @@
         ${pagerHtml(S.admAuditMeta, 'admAuditPage')}
       ` : `
         <div class="card" style="margin-bottom:12px">
-          <h3 style="margin:0 0 10px;font-size:16px">Founder Profile</h3>
-          <label class="fm-lbl">Name</label>
+          <h3 style="margin:0 0 10px;font-size:16px">${t('adm.profile_settings')}</h3>
+          <div style="margin-bottom:12px">${langSelectorHtml()}</div>
+          <label class="fm-lbl">${t('auth.full_name')}</label>
           <input id="adm-pf-name" value="${esc(u.name || '')}" style="margin:4px 0 10px">
           <label class="fm-lbl">Email</label>
           <input id="adm-pf-email" type="email" value="${esc(u.email || '')}" style="margin:4px 0 10px">
-          <label class="fm-lbl">Language Preference</label>
-          <select id="adm-pf-lang" style="margin:4px 0 12px">
+          <label class="fm-lbl">${t('cust.lang_settings')}</label>
+          <select id="adm-pf-lang" style="margin:4px 0 12px" onchange="setLang(this.value)">
             <option value="en" ${(u.language || 'en') === 'en' ? 'selected' : ''}>English</option>
-            <option value="hi" ${u.language === 'hi' ? 'selected' : ''}>Hindi</option>
+            <option value="hi" ${u.language === 'hi' ? 'selected' : ''}>Hindi (हिन्दी)</option>
             <option value="hinglish" ${u.language === 'hinglish' ? 'selected' : ''}>Hinglish</option>
           </select>
-          <button class="btn acc" onclick="saveAdminProfile()">${ic('checkCircle', 16)} Save Profile & Language</button>
+          <button class="btn acc" onclick="saveAdminProfile()">${ic('checkCircle', 16)} ${t('common.save')}</button>
         </div>
 
         <div class="card" style="margin-bottom:12px">
-          <h3 style="margin:0 0 10px;font-size:16px">Security & Password</h3>
+          <h3 style="margin:0 0 10px;font-size:16px">${t('cust.password_mgmt')}</h3>
           ${u.has_password ? `<input id="adm-pw-cur" type="password" placeholder="Current password" style="margin-bottom:8px">` : ''}
           <input id="adm-pw-new" type="password" placeholder="New password (min 8 chars)" style="margin-bottom:10px">
           <button class="btn sm acc" onclick="saveAdminPassword()">${ic('lock', 15)} ${u.has_password ? 'Change Password' : 'Set Password'}</button>
         </div>
 
-        <button class="btn ghost" style="width:100%;color:var(--bad);margin-bottom:8px" onclick="out()">${ic('logOut', 16)} Secure Logout</button>
+        <button class="btn ghost" style="width:100%;color:var(--bad);margin-bottom:8px" onclick="out()">${ic('logOut', 16)} ${t('common.logout')}</button>
         <button class="btn sm ghost" style="width:100%" onclick="logoutAllDevices()">${ic('shield', 15)} Logout All Devices</button>
       `}
     `;
@@ -955,8 +957,9 @@
     act(async () => {
       const res = await api('PUT', '/me/profile', { name, email, language });
       S.user = res.user;
+      if (res.user?.language && typeof setLang === 'function') await setLang(res.user.language, false);
       render();
-      toast(res.message || 'Admin profile saved');
+      toast(res.message || t('val.profile_saved'));
     });
   };
 

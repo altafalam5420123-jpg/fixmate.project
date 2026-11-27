@@ -61,27 +61,27 @@
       </button>
       <div class="search-input-wrap">
         <span class="ico-search">${ic('search', 18)}</span>
-        <input id="q" placeholder="Kaunsi service chahiye? (e.g. AC, Tap, Fan)" value="${esc(S.q)}" oninput="S.q=this.value;sr()">
+        <input id="q" placeholder="${t('cust.search_ph')}" value="${esc(S.q)}" oninput="S.q=this.value;sr()">
       </div>
     </div>
 
     ${activeBooking ? `
       <div class="active-booking-banner" onclick="go('bk')">
         <div>
-          <div style="font-size:11px;font-weight:800;color:var(--pri);text-transform:uppercase;letter-spacing:0.5px">Active Booking</div>
+          <div style="font-size:11px;font-weight:800;color:var(--pri);text-transform:uppercase;letter-spacing:0.5px">${t('cust.active_booking')}</div>
           <b style="font-size:14.5px;color:var(--ink)">${esc(activeBooking.service)}</b>
-          <div class="mut" style="font-size:12px">${esc(activeBooking.label)} • Code: <b style="color:var(--pri)">${esc(activeBooking.start_code)}</b></div>
+          <div class="mut" style="font-size:12px">${esc(trStatus(activeBooking.status))} • Code: <b style="color:var(--pri)">${esc(activeBooking.start_code)}</b></div>
         </div>
-        <button class="btn sm" style="width:auto;padding:7px 14px;font-size:12px">Track ${ic('arrowRight', 14)}</button>
+        <button class="btn sm" style="width:auto;padding:7px 14px;font-size:12px">${t('cust.track')} ${ic('arrowRight', 14)}</button>
       </div>
     ` : ''}
 
     <div class="emergency-strip" onclick="toggleEmergency()">
       <div>
-        <b>${ic('alertTriangle', 16)} ${S.emergency ? 'Emergency Mode Active' : '60-Min Emergency Service'}</b>
-        <span>${S.emergency ? 'Tap karein normal view par lautne ke liye' : 'Bijli, paani ya AC breakdown? Urgent worker dispatch'}</span>
+        <b>${ic('alertTriangle', 16)} ${S.emergency ? t('cust.emergency_on') : t('cust.emergency_off')}</b>
+        <span>${S.emergency ? t('cust.emergency_sub_on') : t('cust.emergency_sub_off')}</span>
       </div>
-      <span class="badge" style="background:#FFFFFF;color:#DC2626;font-weight:800">${S.emergency ? 'Normal Mode' : 'Priority'}</span>
+      <span class="badge" style="background:#FFFFFF;color:#DC2626;font-weight:800">${S.emergency ? 'Normal' : 'Priority'}</span>
     </div>
 
     ${S.coupons.length ? `
@@ -98,31 +98,31 @@
       </div>
     ` : ''}
 
-    <div class="trust">${ic('shieldCheck', 18)} <span>Verified technician, OTP safety start code, upfront quote, 30-day warranty</span></div>
+    <div class="trust">${ic('shieldCheck', 18)} <span>${t('cust.trust')}</span></div>
 
     <div class="ai-home-banner" onclick="window.FixMateAI&&window.FixMateAI.open('voice')">
       <div class="ai-banner-left">
         <div class="ai-banner-badge">${ic('sparkles', 13)} AI Voice & Chat Assistant</div>
-        <div class="ai-banner-title">Talk to FixMate AI</div>
-        <div class="ai-banner-sub">Bol kar ya likh kar koi bhi service book karein</div>
+        <div class="ai-banner-title">${t('cust.ai_title')}</div>
+        <div class="ai-banner-sub">${t('cust.ai_sub')}</div>
       </div>
       <div class="ai-banner-mic-btn">${ic('mic', 22)}</div>
     </div>
 
     <div class="card">
-      <b style="display:flex;align-items:center;gap:6px">${ic('sparkles', 16)} Smart Service Finder — Problem batao</b>
-      <div class="mut" style="margin-top:2px">Apni dikkat bolein ya likhein (e.g. "AC thandi hawa nahi de raha", "Fan kaam nahi kar raha")</div>
+      <b style="display:flex;align-items:center;gap:6px">${ic('sparkles', 16)} ${t('cust.finder_title')}</b>
+      <div class="mut" style="margin-top:2px">${t('cust.ai_sub')}</div>
       <div class="row" style="margin-top:10px;gap:6px">
-        <input id="pb" placeholder="Jaise: AC thanda nahi kar raha, tap leak..." style="margin:0;flex:1" onkeydown="if(event.key==='Enter') diag()">
+        <input id="pb" placeholder="${t('cust.search_ph')}" style="margin:0;flex:1" onkeydown="if(event.key==='Enter') diag()">
         <button id="mic-diag-btn" class="mic-finder-btn" onclick="voiceDiag()" title="Voice search" aria-label="Voice search problem">${ic('mic', 18)}</button>
-        <button class="btn sm" onclick="diag()">${ic('search', 15)} Dhundo</button>
+        <button class="btn sm" onclick="diag()">${ic('search', 15)} ${t('cust.finder_btn')}</button>
       </div>
       <div id="dg"></div>
     </div>
 
     <div class="row" style="margin:18px 0 8px">
-      <h2 style="margin:0">Popular Categories</h2>
-      <button class="btn sm ghost" style="padding:5px 12px;font-size:12px" onclick="S.svcsTab='services';go('svcs')">View All ${ic('arrowRight', 13)}</button>
+      <h2 style="margin:0">${t('cust.popular_cats')}</h2>
+      <button class="btn sm ghost" style="padding:5px 12px;font-size:12px" onclick="S.svcsTab='services';go('svcs')">${t('cust.view_all')} ${ic('arrowRight', 13)}</button>
     </div>
     <div class="chips">
       ${['Sab', ...CATS].map((c) => `
@@ -163,14 +163,14 @@
     return `<div style="margin-top:16px">
       <div class="row" style="margin-bottom:12px">
         <div>
-          <h2 style="margin:0;font-size:22px">Explore Services & Pros</h2>
-          <div class="mut" style="font-size:12.5px">Fixed transparent pricing with 30-day warranty</div>
+          <h2 style="margin:0;font-size:22px">${t('cust.explore_title')}</h2>
+          <div class="mut" style="font-size:12.5px">${t('cust.explore_sub')}</div>
         </div>
       </div>
 
       <div class="seg-tabs">
-        <button class="seg-tab ${tab === 'services' ? 'on' : ''}" onclick="S.svcsTab='services';render()">${ic('grid', 15)} Services (${SV.length})</button>
-        <button class="seg-tab ${tab === 'providers' ? 'on' : ''}" onclick="S.svcsTab='providers';loadProviders()">${ic('userCheck', 15)} Verified Providers</button>
+        <button class="seg-tab ${tab === 'services' ? 'on' : ''}" onclick="S.svcsTab='services';render()">${ic('grid', 15)} ${t('cust.tab_services')} (${SV.length})</button>
+        <button class="seg-tab ${tab === 'providers' ? 'on' : ''}" onclick="S.svcsTab='providers';loadProviders()">${ic('userCheck', 15)} ${t('cust.tab_providers')}</button>
       </div>
 
       ${tab === 'services' ? renderServicesCatalogTab() : renderProvidersTab()}
@@ -654,7 +654,7 @@
       </div>
     ` : ''}
 
-    <h2 style="display:flex;align-items:center;gap:7px">${ic('calendar', 18)} Date Selection</h2>
+    <h2 style="display:flex;align-items:center;gap:7px">${ic('calendar', 18)} ${t('cust.date_select')}</h2>
     <div class="chips" style="margin-bottom:8px">
       ${[0, 1, 2].map((offset) => {
         const dIso = addDaysIso(offset);
@@ -662,9 +662,9 @@
         return `<button class="chip ${curDate === dIso ? 'on' : ''}" onclick="loadAvailableSlots('${dIso}')">${label}</button>`;
       }).join('')}
     </div>
-    <input type="date" min="${todayIso()}" value="${esc(curDate)}" onchange="loadAvailableSlots(this.value)" aria-label="Select booking date">
+    <input type="date" min="${todayIso()}" value="${esc(curDate)}" onchange="loadAvailableSlots(this.value)" aria-label="${t('cust.date_select')}">
 
-    <h2 style="display:flex;align-items:center;gap:7px">${ic('clock', 18)} Available Time Slots</h2>
+    <h2 style="display:flex;align-items:center;gap:7px">${ic('clock', 18)} ${t('cust.slots_select')}</h2>
     <div class="slot-grid">
       ${slots.map((s) => `
         <button class="slot-btn ${S.bkSelectedTime === s.label ? 'on' : ''}" ${!s.available ? 'disabled' : ''} onclick="S.bkSelectedTime='${esc(s.label)}';render()">
@@ -686,7 +686,7 @@
       </div>
     ` : ''}
 
-    <h2 style="display:flex;align-items:center;gap:7px">${ic('pin', 18)} Service Address & Map Location Confirmation</h2>
+    <h2 style="display:flex;align-items:center;gap:7px">${ic('pin', 18)} ${t('cust.address_select')}</h2>
     ${S.addresses.length ? `
       <div class="chips" style="margin-bottom:8px">
         ${S.addresses.map((a) => {
@@ -761,25 +761,25 @@
       <div class="price-line total"><span>Estimated Total (Pay after service)</span><span>${isTutor ? 'Free Demo' : inr(estimatedTotal)}</span></div>
     </div>
 
-    <h2>Payment (Kaam poora hone ke baad)</h2>
+    <h2>${t('cust.payment_after')}</h2>
     <div class="chips">
-      <button class="chip ${S.pay === 'wallet' ? 'on' : ''}" onclick="S.pay='wallet';render()">${ic('wallet', 14)} FixMate Wallet (${inr(S.w)})</button>
-      <button class="chip ${S.pay === 'cash' ? 'on' : ''}" onclick="S.pay='cash';render()">${ic('checkCircle', 14)} Cash on Completion</button>
-      <button class="chip ${S.pay === 'razorpay' ? 'on' : ''}" onclick="S.pay='razorpay';render()">${ic('creditCard', 14)} Online UPI / Card</button>
+      <button class="chip ${S.pay === 'wallet' ? 'on' : ''}" onclick="S.pay='wallet';render()">${ic('wallet', 14)} ${t('cust.pay_wallet')} (${inr(S.w)})</button>
+      <button class="chip ${S.pay === 'cash' ? 'on' : ''}" onclick="S.pay='cash';render()">${ic('checkCircle', 14)} ${t('cust.pay_cash')}</button>
+      <button class="chip ${S.pay === 'razorpay' ? 'on' : ''}" onclick="S.pay='razorpay';render()">${ic('creditCard', 14)} ${t('cust.pay_online')}</button>
     </div>
 
     <button class="btn acc" style="margin-top:16px" onclick="doBook()">
-      ${ic('checkCircle', 17)} ${isTutor ? 'Confirm Free Demo' : `Confirm Booking (${inr(estimatedTotal)})`}
+      ${ic('checkCircle', 17)} ${isTutor ? 'Confirm Free Demo' : `${t('cust.confirm_booking')} (${inr(estimatedTotal)})`}
     </button>`;
   };
 
   window.doBook = function () {
     if (!S.ad.trim()) {
-      toast('Service address likhna zaruri hai');
+      toast(t('val.address'));
       return;
     }
     if (!S.bkSelectedTime && !(SL[S.slot])) {
-      toast('Kripya time slot chunein');
+      toast(t('val.slot'));
       return;
     }
     const x = SV[S.sv] || SV[0];
@@ -864,18 +864,18 @@
 
     return `<div style="margin-top:16px">
       <div class="row" style="margin-bottom:12px">
-        <h2 style="margin:0;font-size:22px">My Bookings</h2>
-        <button class="btn sm ghost" onclick="go('mo')">${ic('wallet', 14)} Wallet: ${inr(S.w)}</button>
+        <h2 style="margin:0;font-size:22px">${t('cust.my_bookings')}</h2>
+        <button class="btn sm ghost" onclick="go('mo')">${ic('wallet', 14)} ${t('cust.pay_wallet')}: ${inr(S.w)}</button>
       </div>
 
       <div class="seg-tabs">
-        <button class="seg-tab ${tab === 'active' ? 'on' : ''}" onclick="S.bkTab='active';render()">Active (${activeList.length})</button>
-        <button class="seg-tab ${tab === 'history' ? 'on' : ''}" onclick="S.bkTab='history';render()">History (${historyList.length})</button>
-        <button class="seg-tab ${tab === 'payments' ? 'on' : ''}" onclick="S.bkTab='payments';refresh().then(render)">Payments (${payments.length})</button>
+        <button class="seg-tab ${tab === 'active' ? 'on' : ''}" onclick="S.bkTab='active';render()">${t('cust.tab_active')} (${activeList.length})</button>
+        <button class="seg-tab ${tab === 'history' ? 'on' : ''}" onclick="S.bkTab='history';render()">${t('cust.tab_history')} (${historyList.length})</button>
+        <button class="seg-tab ${tab === 'payments' ? 'on' : ''}" onclick="S.bkTab='payments';refresh().then(render)">${t('cust.tab_payments')} (${payments.length})</button>
       </div>
 
-      ${tab === 'active' ? (activeList.length ? activeList.map(bkc).join('') : emptyBox('list', 'Koi active booking nahi', 'Nayi service book karne ke liye Services tab dekhein.', `<button class="btn acc" onclick="go('svcs')">Browse Services</button>`)) : ''}
-      ${tab === 'history' ? (historyList.length ? historyList.map(bkc).join('') : emptyBox('clock', 'Booking history khali hai', 'Completed aur cancelled bookings yahan dikhengi.')) : ''}
+      ${tab === 'active' ? (activeList.length ? activeList.map(bkc).join('') : emptyBox('list', t('cust.empty_bookings'), t('cust.empty_bookings_desc'), `<button class="btn acc" onclick="go('svcs')">${t('nav.services')}</button>`)) : ''}
+      ${tab === 'history' ? (historyList.length ? historyList.map(bkc).join('') : emptyBox('clock', t('cust.empty_history'), t('cust.empty_bookings_desc'))) : ''}
       ${tab === 'payments' ? renderPaymentHistory(payments) : ''}
     </div>`;
   };
@@ -924,10 +924,10 @@
     return `<div style="margin-top:16px">
       <div class="row" style="margin-bottom:14px">
         <div>
-          <h2 style="margin:0;font-size:22px">Notifications</h2>
+          <h2 style="margin:0;font-size:22px">${t('cust.notifications_title')}</h2>
           <div class="mut" style="font-size:12.5px">${S.unreadNotifications || 0} unread alerts</div>
         </div>
-        ${list.length ? `<button class="btn sm ghost" onclick="markAllNotificationsRead()">${ic('check', 14)} Mark All Read</button>` : ''}
+        ${list.length ? `<button class="btn sm ghost" onclick="markAllNotificationsRead()">${ic('check', 14)} ${t('cust.mark_all_read')}</button>` : ''}
       </div>
       ${list.length ? list.map((n) => `
         <div class="card" style="margin-bottom:10px;background:${n.is_read ? 'var(--card)' : 'var(--pri-soft)'};border-color:${n.is_read ? 'var(--bd)' : 'var(--pri)'};cursor:${n.booking_id ? 'pointer' : 'default'}" ${n.booking_id ? `onclick="S.bkTab='active';go('bk')"` : ''}>
@@ -937,7 +937,7 @@
           </div>
           <div class="mut" style="font-size:13px;margin-top:5px">${esc(n.body)}</div>
         </div>
-      `).join('') : emptyBox('bell', 'All caught up!', 'Booking confirmations, technician arrival updates, and offers will appear here.')}
+      `).join('') : emptyBox('bell', t('cust.empty_notifications'), '')}
     </div>`;
   };
 
@@ -955,13 +955,14 @@
     act(async () => {
       const res = await api('PUT', '/me/profile', { name, email, language });
       S.user = res.user;
+      if (res.user?.language && typeof setLang === 'function') await setLang(res.user.language, false);
       try {
         const stored = JSON.parse(localStorage.getItem('fm_auth') || '{}');
         stored.u = res.user;
         localStorage.setItem('fm_auth', JSON.stringify(stored));
       } catch (e) {}
       render();
-      toast(res.message || 'Profile settings saved');
+      toast(res.message || t('val.profile_saved'));
     });
   };
 
@@ -1010,22 +1011,23 @@
 
       ${tab === 'account' ? `
         <div class="card">
-          <h3 style="margin:0 0 12px;font-size:16px;display:flex;align-items:center;gap:6px">${ic('user', 16)} Profile & Language Settings</h3>
-          <label style="font-size:12.5px;font-weight:700">Full Name</label>
+          <h3 style="margin:0 0 12px;font-size:16px;display:flex;align-items:center;gap:6px">${ic('user', 16)} ${t('cust.profile_settings')} & ${t('cust.lang_settings')}</h3>
+          <div style="margin-bottom:12px">${langSelectorHtml()}</div>
+          <label style="font-size:12.5px;font-weight:700">${t('auth.full_name')}</label>
           <input id="pf-name" value="${esc(u.name || '')}" style="margin:4px 0 10px">
           <label style="font-size:12.5px;font-weight:700">Email Address (Optional)</label>
           <input id="pf-email" type="email" placeholder="you@example.com" value="${esc(u.email || '')}" style="margin:4px 0 10px">
-          <label style="font-size:12.5px;font-weight:700">Preferred Language</label>
-          <select id="pf-lang" style="margin:4px 0 14px">
+          <label style="font-size:12.5px;font-weight:700">${t('cust.lang_settings')}</label>
+          <select id="pf-lang" style="margin:4px 0 14px" onchange="setLang(this.value)">
             <option value="en" ${(u.language || 'en') === 'en' ? 'selected' : ''}>English</option>
-            <option value="hi" ${u.language === 'hi' ? 'selected' : ''}>Hindi</option>
+            <option value="hi" ${u.language === 'hi' ? 'selected' : ''}>Hindi (हिन्दी)</option>
             <option value="hinglish" ${u.language === 'hinglish' ? 'selected' : ''}>Hinglish</option>
           </select>
-          <button class="btn acc" onclick="saveCustomerProfileSettings()">${ic('checkCircle', 16)} Save Profile & Language</button>
+          <button class="btn acc" onclick="saveCustomerProfileSettings()">${ic('checkCircle', 16)} ${t('common.save')}</button>
         </div>
 
         <div class="card">
-          <h3 style="margin:0 0 12px;font-size:16px;display:flex;align-items:center;gap:6px">${ic('lock', 16)} Password Management</h3>
+          <h3 style="margin:0 0 12px;font-size:16px;display:flex;align-items:center;gap:6px">${ic('lock', 16)} ${t('cust.password_mgmt')}</h3>
           ${u.has_password ? `
             <label style="font-size:12.5px;font-weight:700">Current Password</label>
             <input id="pf-cur-pw" type="password" placeholder="Enter current password" style="margin:4px 0 10px">
@@ -1131,7 +1133,7 @@
         `).join('') : emptyBox('alert', 'No support tickets', 'Need help with a booking or payment? Tap "New Ticket" above.')}
       ` : ''}
 
-      <button class="btn acc" style="margin-top:16px" onclick="out()">${ic('logOut', 16)} Logout & Switch Account</button>
+      <button class="btn acc" style="margin-top:16px" onclick="out()">${ic('logOut', 16)} ${t('common.logout')}</button>
     </div>`;
   };
 })();

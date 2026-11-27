@@ -11,6 +11,7 @@ const { openDb, CATEGORIES } = require('./db');
 const { createAiRouter } = require('./aiRoutes');
 const { smartFindService, isOpenAIRealtimeConfigured, isGeminiConfigured } = require('./aiService');
 const { isMsg91Configured, getOtpExpiryMinutes, sendOtp: sendMsg91Otp, verifyOtp: verifyMsg91Otp } = require('./msg91Service');
+const { normalizeLang, resolveLangFromRequest, STATUS_LABELS, NOTIF_TEMPLATES, translateBackendMessage } = require('./i18n');
 
 const COMMISSION = 0.15; // platform cut from worker earnings
 const VISIT_FEE = 99; // charged if customer rejects the quote
@@ -132,14 +133,20 @@ function createApp(db = openDb()) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.vary('Origin');
     }
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Razorpay-Signature');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Razorpay-Signature, X-Lang, Accept-Language');
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
     if (req.method === 'OPTIONS') return res.sendStatus(204);
     next();
   });
   app.use(express.static(path.join(__dirname, '../../client'))); // serves the frontend at /
   const h = (fn) => (req, res, next) => { try { Promise.resolve(fn(req, res, next)).catch(next); } catch (e) { next(e); } };
-  const ok = (res, data = {}, code = 200) => res.status(code).json({ success: true, ...data });
+  const ok = (res, data = {}, code = 200) => {
+    const lang = resolveLangFromRequest(res.req);
+    const out = (lang && data && typeof data.message === 'string')
+      ? { ...data, message: translateBackendMessage(data.message, lang) }
+      : data;
+    return res.status(code).json({ success: true, ...out });
+  };
   app.use('/api', rateLimit({ windowMs: 15 * 60_000, max: Number(process.env.API_RATE_MAX) || 300, standardHeaders: true, legacyHeaders: false }));
 
   // ---------- System Health & Credential Readiness (Phase 9) ----------
@@ -440,8 +447,9 @@ function createApp(db = openDb()) {
       }
       if (role === 'worker' && !(await isValidCategoryName(skill))) bad(400, 'Worker ke liye sahi kaam chuno');
       const isWorker = role === 'worker';
+      const signupLang = normalizeLang(req.body?.language || req.headers?.['x-lang']) || 'en';
       const insRes = await db.query(
-        'INSERT INTO users (phone, name, role, skill, wallet, id_verified, verification_status, service_categories) VALUES ($1, $2, $3, $4, 0, $5, $6, $7) RETURNING id',
+        'INSERT INTO users (phone, name, role, skill, wallet, id_verified, verification_status, service_categories, language) VALUES ($1, $2, $3, $4, 0, $5, $6, $7, $8) RETURNING id',
         [
           row.phone,
           String(name).trim().slice(0, 60),
@@ -449,7 +457,8 @@ function createApp(db = openDb()) {
           isWorker ? skill : null,
           isWorker ? 0 : 1,
           isWorker ? 'pending' : 'approved',
-          isWorker ? JSON.stringify([skill]) : null
+          isWorker ? JSON.stringify([skill]) : null,
+          signupLang
         ]
       );
       const id = insRes.rows[0].id;
@@ -1217,7 +1226,7 @@ function createApp(db = openDb()) {
       formatted_address: formattedAddress,
       address,
       contact_phone: contactPhone,
-      label: LABEL[b.status] || b.status,
+      label: (STATUS_LABELS[u?.language || 'en'] && STATUS_LABELS[u?.language || 'en'][b.status]) || LABEL[b.status] || b.status,
       ...(u.id === b.customer_id ? { start_code } : {})
     };
   };
@@ -1268,7 +1277,13 @@ function createApp(db = openDb()) {
     }
 
     if (NOTIF_TEXT[to]) {
-      const [nTitle, nBody] = NOTIF_TEXT[to];
+      let custLang = 'en';
+      try {
+        const custRow = await db.queryOne('SELECT language FROM users WHERE id = $1', [b.customer_id]);
+        custLang = normalizeLang(custRow?.language) || 'en';
+      } catch {}
+      const tpl = (NOTIF_TEMPLATES[custLang] && NOTIF_TEMPLATES[custLang][to]) || NOTIF_TEXT[to];
+      const [nTitle, nBody] = tpl;
       await notifyUser({
         userId: b.customer_id,
         bookingId: b.id,
@@ -3697,13 +3712,21 @@ function createApp(db = openDb()) {
   // ---------- AI Assistant (Voice + Chat) ----------
   app.use('/api/ai', createAiRouter({ db, auth, authOptional }));
 
-  app.use((req, res) => res.status(404).json({ success: false, message: 'Route nahi mila' }));
+  app.use((req, res) => {
+    const lang = resolveLangFromRequest(req);
+    return res.status(404).json({ success: false, message: translateBackendMessage('Route nahi mila', lang) });
+  });
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
-    if (err instanceof HttpError) return res.status(err.code).json({ success: false, message: err.message });
-    if (err.type === 'entity.parse.failed') return res.status(400).json({ success: false, message: 'JSON galat hai' });
+    const lang = resolveLangFromRequest(req);
+    if (err instanceof HttpError) {
+      return res.status(err.code).json({ success: false, message: translateBackendMessage(err.message, lang) });
+    }
+    if (err.type === 'entity.parse.failed') {
+      return res.status(400).json({ success: false, message: translateBackendMessage('JSON galat hai', lang) });
+    }
     console.error(err);
-    res.status(500).json({ success: false, message: 'Server mein dikkat aayi' });
+    res.status(500).json({ success: false, message: translateBackendMessage('Server mein dikkat aayi', lang) });
   });
 
   return app;

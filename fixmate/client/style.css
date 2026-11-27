@@ -2729,3 +2729,55 @@ h2 {
   color: #FFFFFF;
   border-color: var(--pri);
 }
+
+/* Phase 6: Multilingual Selector */
+.fm-lang-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.fm-lang-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--soft);
+  border: 1px solid var(--bd);
+}
+.fm-lang-pills.on-dark {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #FFFFFF;
+}
+.fm-lang-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px 0 6px;
+  color: var(--mut);
+}
+.fm-lang-pills.on-dark .fm-lang-ico {
+  color: #FFFFFF;
+}
+.fm-lang-btn {
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--mut);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.fm-lang-pills.on-dark .fm-lang-btn {
+  color: rgba(255, 255, 255, 0.85);
+}
+.fm-lang-btn.on {
+  background: var(--pri);
+  color: #FFFFFF !important;
+  box-shadow: 0 2px 6px rgba(22, 119, 232, 0.28);
+}
