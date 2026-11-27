@@ -88,7 +88,7 @@ let S = {
   wkAvail: [],
   wkPayments: null,
   wkPendingDocData: null,
-  wkStats: { pending_requests: 0, upcoming_jobs: 0, in_progress_jobs: 0, completed_jobs: 0, active_jobs: 0, cancelled_jobs: 0, total_earnings: 0, avg_rating: 4.8, review_count: 0 },
+  wkStats: { pending_requests: 0, upcoming_jobs: 0, in_progress_jobs: 0, completed_jobs: 0, active_jobs: 0, cancelled_jobs: 0, total_earnings: 0, avg_rating: 0, review_count: 0 },
   wkReviews: [],
   wkStartPhotos: {},
   wkCompletePhotos: {},

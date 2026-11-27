@@ -322,32 +322,9 @@ const VERIFIED_FAQS = {
   coverage: 'Currently serving Dhanbad, Jharkhand across all residential areas. Emergency priority bookings aim for ~60 min dispatch depending on live technician availability.'
 };
 
-async function ensureSeedWorkers(db) {
-  try {
-    const existing = await db.queryOne("SELECT COUNT(*) AS count FROM users WHERE role = 'worker'");
-    if (Number(existing.count) === 0) {
-      const workers = [
-        ['9800000001', 'Sunil Kumar (Verified Pro)', 'Electrician'],
-        ['9800000002', 'Ramesh Verma (Senior Plumber)', 'Plumber'],
-        ['9800000003', 'Mohammad Imran (AC Specialist)', 'AC Repair'],
-        ['9800000004', 'Vikas Sharma (Electronics Expert)', 'TV Repair'],
-        ['9800000005', 'Manoj Mahato (Certified Mechanic)', 'Mechanic'],
-        ['9800000006', 'Priya Kumari (B.Tech, Maths/Science)', 'Home Tutor']
-      ];
-      await db.transaction(async (tx) => {
-        for (const w of workers) {
-          await tx.query(
-            `INSERT INTO users (phone, name, role, skill, wallet, online, id_verified, token_version)
-             VALUES ($1, $2, 'worker', $3, 1000, 1, 1, 0)
-             ON CONFLICT (phone) DO NOTHING`,
-            [w[0], w[1], w[2]]
-          );
-        }
-      });
-    }
-  } catch (err) {
-    console.warn('[AI Tools] Seed workers check skipped:', err.message);
-  }
+async function ensureSeedWorkers() {
+  // Disabled: do not auto-seed fake/sample technicians into production users table.
+  return;
 }
 
 async function executeTool(name, args, { db, user }) {

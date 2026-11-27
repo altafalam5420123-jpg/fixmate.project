@@ -556,7 +556,7 @@ function createApp(db = openDb()) {
         active_jobs: Number(activeRes ? activeRes.c : 0),
         cancelled_jobs: Number(cancelledRes ? cancelledRes.c : 0),
         total_earnings: Number(totalEarningsRes ? totalEarningsRes.total : 0),
-        avg_rating: ratingRes && ratingRes.avg_rating ? Number(ratingRes.avg_rating) : 4.8,
+        avg_rating: ratingRes && ratingRes.avg_rating ? Number(ratingRes.avg_rating) : 0,
         review_count: Number(ratingRes ? ratingRes.review_count : 0),
         verification_status: getProviderVerificationStatus(req.user)
       }
@@ -865,7 +865,7 @@ function createApp(db = openDb()) {
 
   app.get('/api/providers', h(async (req, res) => {
     const { cat, q, area, min_rating, online, sort } = req.query;
-    const conditions = ["u.role = 'worker'", 'COALESCE(u.id_verified, 1) = 1'];
+    const conditions = ["u.role = 'worker'", 'COALESCE(u.id_verified, 1) = 1', "COALESCE(u.verification_status, 'approved') = 'approved'"];
     const params = [];
     let idx = 1;
 
@@ -904,7 +904,7 @@ function createApp(db = openDb()) {
         db.queryOne("SELECT COUNT(*) AS c FROM bookings WHERE worker_id = $1 AND status = 'completed'", [w.id])
           .catch(() => ({ c: 0 }))
       ]);
-      const avgRating = revRes && revRes.avg_rating ? Number(revRes.avg_rating) : 4.8;
+      const avgRating = revRes && revRes.avg_rating ? Number(revRes.avg_rating) : 0;
       if (min_rating && Number(min_rating) > 0 && avgRating < Number(min_rating)) continue;
       providers.push({
         id: w.id,
@@ -912,9 +912,9 @@ function createApp(db = openDb()) {
         skill: w.skill,
         online: Boolean(w.online),
         verified: Boolean(w.id_verified),
-        experience_years: w.experience_years != null ? Number(w.experience_years) : 2,
-        service_areas: w.service_areas || 'All Dhanbad',
-        bio: w.bio || `Verified ${w.skill} specialist serving Dhanbad with transparent quotes and 30-day service guarantee.`,
+        experience_years: w.experience_years != null ? Number(w.experience_years) : 0,
+        service_areas: w.service_areas || '',
+        bio: w.bio || '',
         base_rate: w.base_rate != null ? Number(w.base_rate) : null,
         avg_rating: avgRating,
         review_count: Number(revRes?.review_count || 0),
@@ -965,11 +965,11 @@ function createApp(db = openDb()) {
         skill: w.skill,
         online: Boolean(w.online),
         verified: Boolean(w.id_verified),
-        experience_years: w.experience_years != null ? Number(w.experience_years) : 2,
-        service_areas: w.service_areas || 'All Dhanbad',
-        bio: w.bio || `Verified ${w.skill} specialist serving Dhanbad with transparent quotes and 30-day service guarantee.`,
+        experience_years: w.experience_years != null ? Number(w.experience_years) : 0,
+        service_areas: w.service_areas || '',
+        bio: w.bio || '',
         base_rate: w.base_rate != null ? Number(w.base_rate) : null,
-        avg_rating: revStats && revStats.avg_rating ? Number(revStats.avg_rating) : 4.8,
+        avg_rating: revStats && revStats.avg_rating ? Number(revStats.avg_rating) : 0,
         review_count: Number(revStats?.review_count || 0),
         completed_jobs: Number(compRes?.c || 0)
       },

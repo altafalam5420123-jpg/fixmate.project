@@ -147,7 +147,7 @@
             <b style="margin-top:6px;font-size:14px">${esc(p.name)}</b>
             <div class="mut" style="font-size:12px">${esc(p.skill)} · ${p.experience_years}y exp</div>
             <div style="font-size:12px;font-weight:700;color:var(--pri);margin-top:4px;display:flex;align-items:center;gap:4px">
-              ${ic('star', 13, true)} ${p.avg_rating} (${p.review_count}) · ${p.completed_jobs} jobs
+              ${ic('star', 13, true)} ${p.avg_rating > 0 ? p.avg_rating : 'New'} (${p.review_count}) · ${p.completed_jobs} jobs
             </div>
           </button>
         `).join('')}
@@ -269,13 +269,13 @@
               <div>
                 <b style="font-size:15.5px;display:flex;align-items:center;gap:6px">${esc(p.name)} <span class="badge ok" style="font-size:10px">${ic('shieldCheck', 11)} Verified</span></b>
                 <div class="mut" style="font-size:12.5px">${esc(p.skill)} · ${p.experience_years} yrs exp</div>
-                <div class="mut" style="font-size:11.5px;display:flex;align-items:center;gap:4px;margin-top:2px">${ic('pin', 12)} ${esc(p.service_areas || 'All Dhanbad')}</div>
+                ${p.service_areas ? `<div class="mut" style="font-size:11.5px;display:flex;align-items:center;gap:4px;margin-top:2px">${ic('pin', 12)} ${esc(p.service_areas)}</div>` : ''}
               </div>
             </div>
             <div style="text-align:right">
               <span class="badge ${p.online ? 'ok' : ''}">${p.online ? 'Online' : 'Offline'}</span>
               <div style="font-weight:800;color:var(--pri);font-size:13px;margin-top:6px;display:flex;align-items:center;justify-content:flex-end;gap:4px">
-                ${ic('star', 13, true)} ${p.avg_rating} <span class="mut">(${p.review_count})</span>
+                ${ic('star', 13, true)} ${p.avg_rating > 0 ? p.avg_rating : 'New'} <span class="mut">(${p.review_count})</span>
               </div>
             </div>
           </div>
@@ -456,7 +456,7 @@
 
       <div class="wk-kpi-row" style="margin-top:16px;margin-bottom:10px">
         <div class="wk-kpi-card">
-          <div class="wk-kpi-val">${p.avg_rating || 4.8}</div>
+          <div class="wk-kpi-val">${p.avg_rating > 0 ? p.avg_rating : 'New'}</div>
           <div class="wk-kpi-lbl">Avg Rating</div>
         </div>
         <div class="wk-kpi-card">
@@ -464,15 +464,15 @@
           <div class="wk-kpi-lbl">Jobs Done</div>
         </div>
         <div class="wk-kpi-card">
-          <div class="wk-kpi-val">${p.experience_years || 2} yrs</div>
+          <div class="wk-kpi-val">${p.experience_years || 0} yrs</div>
           <div class="wk-kpi-lbl">Experience</div>
         </div>
       </div>
 
-      <div class="mut" style="font-size:13px;line-height:1.5;margin-bottom:10px">${esc(p.bio || '')}</div>
-      <div class="mut" style="font-size:12.5px;display:flex;align-items:center;gap:6px;margin-bottom:14px">
-        ${ic('pin', 14)} <b>Service Areas:</b> ${esc(p.service_areas || 'All Dhanbad')}
-      </div>
+      ${p.bio ? `<div class="mut" style="font-size:13px;line-height:1.5;margin-bottom:10px">${esc(p.bio)}</div>` : ''}
+      ${p.service_areas ? `<div class="mut" style="font-size:12.5px;display:flex;align-items:center;gap:6px;margin-bottom:14px">
+        ${ic('pin', 14)} <b>Service Areas:</b> ${esc(p.service_areas)}
+      </div>` : ''}
 
       ${defaultSvcId ? `
         <button class="btn acc" onclick='bookWithProvider(${JSON.stringify({ id: p.id, name: p.name, skill: p.skill }).replace(/'/g, "&#39;")}, ${defaultSvcId})'>

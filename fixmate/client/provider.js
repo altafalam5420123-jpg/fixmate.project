@@ -66,7 +66,7 @@
   };
 
   function wkHeader(u) {
-    const rating = S.wkStats?.avg_rating || 4.8;
+    const rating = S.wkStats?.avg_rating ? S.wkStats.avg_rating : 'New';
     const cats = Array.isArray(u.service_categories) && u.service_categories.length ? u.service_categories : [u.skill || 'Service Partner'];
     return `<div class="hd" style="margin-bottom:14px">
       <div class="row">
@@ -142,7 +142,7 @@
         <div class="wk-kpi-lbl">Wallet Balance</div>
       </div>
       <div class="wk-kpi-card" onclick="S.wkEarnTab='reviews';setWkTab('earnings')" style="cursor:pointer">
-        <div class="wk-kpi-val">${st.avg_rating || 4.8}</div>
+        <div class="wk-kpi-val">${st.avg_rating ? st.avg_rating : 'New'}</div>
         <div class="wk-kpi-lbl">${st.review_count || 0} Reviews</div>
       </div>
     </div>
@@ -397,7 +397,7 @@
     const sum = payData.summary || {};
     const jobPayouts = payData.job_payouts || [];
     const walletTxs = payData.wallet_transactions || [];
-    const rating = S.wkStats?.avg_rating || 4.8;
+    const rating = S.wkStats?.avg_rating ? S.wkStats.avg_rating : 0;
     const revCount = S.wkStats?.review_count || S.wkReviews.length;
 
     return `<div class="hd" style="margin-bottom:14px">
