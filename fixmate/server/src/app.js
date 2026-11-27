@@ -183,6 +183,7 @@ function createApp(db = openDb()) {
       const p = jwt.verify(token, secret);
       const u = await db.queryOne('SELECT * FROM users WHERE id = $1', [p.id]);
       if (!u) return bad(401, 'Login karo');
+      if (u.account_status === 'suspended') return bad(403, 'Aapka account suspend kar diya gaya hai. Support se sampark karein.');
       if (p.tokenVersion !== u.token_version) return bad(401, 'Login karo');
       if (roles.length && !roles.includes(u.role)) return bad(403, 'Ye action is role ke liye nahi hai');
       req.user = u;
@@ -259,6 +260,7 @@ function createApp(db = openDb()) {
       verification_doc_type: u.verification_doc_type || null,
       verification_submitted_at: u.verification_submitted_at || null,
       service_areas: u.service_areas || 'All Dhanbad',
+      account_status: u.account_status || 'active',
       created_at: u.created_at || null
     };
   };
@@ -266,6 +268,31 @@ function createApp(db = openDb()) {
   const credit = async (uid, label, amount, runner = db) => {
     await runner.query('UPDATE users SET wallet = wallet + $1 WHERE id = $2', [amount, uid]);
     await runner.query('INSERT INTO wallet_tx (user_id, label, amount) VALUES ($1, $2, $3)', [uid, label, amount]);
+  };
+
+  const logAdminAudit = async (adminUserId, action, targetType, targetId = null, details = null, runner = db) => {
+    try {
+      await runner.query(
+        'INSERT INTO admin_audit_logs (admin_user_id, action, target_type, target_id, details_json) VALUES ($1, $2, $3, $4, $5)',
+        [adminUserId, String(action).slice(0, 80), String(targetType).slice(0, 50), targetId != null ? Number(targetId) : null, details ? JSON.stringify(details) : null]
+      );
+    } catch {
+      // non-fatal audit failsafe
+    }
+  };
+
+  const isValidCategoryName = async (cat) => {
+    const clean = String(cat || '').trim();
+    if (!clean) return false;
+    if (CATEGORIES.includes(clean)) return true;
+    const found = await db.queryOne('SELECT id FROM categories WHERE LOWER(name) = LOWER($1) AND is_active = 1', [clean]).catch(() => null);
+    return Boolean(found);
+  };
+
+  const sanitizeCsvCell = (val) => {
+    let s = val == null ? '' : String(val);
+    if (/^[=+\-@]/.test(s)) s = "'" + s;
+    return '"' + s.replace(/"/g, '""') + '"';
   };
 
   // ---------- Auth (OTP) ----------
@@ -400,14 +427,18 @@ function createApp(db = openDb()) {
     }
 
     let user = await db.queryOne('SELECT * FROM users WHERE phone = $1', [row.phone]), isNew = false;
+    if (user && user.account_status === 'suspended') {
+      bad(403, 'Aapka account suspend kar diya gaya hai. Support se sampark karein.');
+    }
     if (!user) {
-      if (String(name || '').trim().length < 2 || !['customer', 'worker', 'admin'].includes(role)) {
+      if (role === 'admin') bad(403, 'Admin privileges public signup se assign nahi ki ja sakti');
+      if (String(name || '').trim().length < 2 || !['customer', 'worker'].includes(role)) {
         if (row.hash === 'MSG91_PENDING') {
           await db.query('UPDATE otps SET hash = $1 WHERE phone = $2', ['MSG91_VERIFIED_PENDING_PROFILE', row.phone]);
         }
         return res.status(400).json({ success: false, needsProfile: true, message: 'Naam aur role chuno' });
       }
-      if (role === 'worker' && !CATEGORIES.includes(skill)) bad(400, 'Worker ke liye sahi kaam chuno');
+      if (role === 'worker' && !(await isValidCategoryName(skill))) bad(400, 'Worker ke liye sahi kaam chuno');
       const isWorker = role === 'worker';
       const insRes = await db.query(
         'INSERT INTO users (phone, name, role, skill, wallet, id_verified, verification_status, service_categories) VALUES ($1, $2, $3, $4, 0, $5, $6, $7) RETURNING id',
@@ -532,7 +563,7 @@ function createApp(db = openDb()) {
       [uid]
     );
     const ratingRes = await db.queryOne(
-      "SELECT ROUND(AVG(rating)::numeric, 1) AS avg_rating, COUNT(*) AS review_count FROM reviews WHERE worker_id = $1",
+      "SELECT ROUND(AVG(rating)::numeric, 1) AS avg_rating, COUNT(*) AS review_count FROM reviews WHERE worker_id = $1 AND COALESCE(is_hidden, 0) = 0",
       [uid]
     );
 
@@ -793,7 +824,7 @@ function createApp(db = openDb()) {
          JOIN bookings b ON b.id = r.booking_id
          JOIN services s ON s.id = b.service_id
          JOIN users u ON u.id = r.customer_id
-         WHERE r.worker_id = $1
+         WHERE r.worker_id = $1 AND COALESCE(r.is_hidden, 0) = 0
          ORDER BY r.id DESC LIMIT 50`,
         [req.user.id]
       );
@@ -835,7 +866,7 @@ function createApp(db = openDb()) {
       db.queryOne(
         `SELECT ROUND(AVG(r.rating)::numeric, 1) AS avg_rating, COUNT(*) AS review_count
          FROM reviews r JOIN bookings b ON b.id = r.booking_id
-         WHERE b.service_id = $1`,
+         WHERE b.service_id = $1 AND COALESCE(r.is_hidden, 0) = 0`,
         [sId]
       ).catch(() => ({ avg_rating: null, review_count: 0 })),
       db.query(
@@ -843,7 +874,7 @@ function createApp(db = openDb()) {
          FROM reviews r
          JOIN bookings b ON b.id = r.booking_id
          JOIN users u ON u.id = r.customer_id
-         WHERE b.service_id = $1
+         WHERE b.service_id = $1 AND COALESCE(r.is_hidden, 0) = 0
          ORDER BY r.id DESC LIMIT 15`,
         [sId]
       ).catch(() => ({ rows: [] }))
@@ -899,7 +930,7 @@ function createApp(db = openDb()) {
     const providers = [];
     for (const w of rowsRes.rows) {
       const [revRes, compRes] = await Promise.all([
-        db.queryOne('SELECT ROUND(AVG(rating)::numeric, 1) AS avg_rating, COUNT(*) AS review_count FROM reviews WHERE worker_id = $1', [w.id])
+        db.queryOne('SELECT ROUND(AVG(rating)::numeric, 1) AS avg_rating, COUNT(*) AS review_count FROM reviews WHERE worker_id = $1 AND COALESCE(is_hidden, 0) = 0', [w.id])
           .catch(() => ({ avg_rating: null, review_count: 0 })),
         db.queryOne("SELECT COUNT(*) AS c FROM bookings WHERE worker_id = $1 AND status = 'completed'", [w.id])
           .catch(() => ({ c: 0 }))
@@ -940,7 +971,7 @@ function createApp(db = openDb()) {
     if (!w) bad(404, 'Verified provider nahi mila');
 
     const [revStats, compRes, reviewsRes, svcRes] = await Promise.all([
-      db.queryOne('SELECT ROUND(AVG(rating)::numeric, 1) AS avg_rating, COUNT(*) AS review_count FROM reviews WHERE worker_id = $1', [w.id])
+      db.queryOne('SELECT ROUND(AVG(rating)::numeric, 1) AS avg_rating, COUNT(*) AS review_count FROM reviews WHERE worker_id = $1 AND COALESCE(is_hidden, 0) = 0', [w.id])
         .catch(() => ({ avg_rating: null, review_count: 0 })),
       db.queryOne("SELECT COUNT(*) AS c FROM bookings WHERE worker_id = $1 AND status = 'completed'", [w.id])
         .catch(() => ({ c: 0 })),
@@ -950,7 +981,7 @@ function createApp(db = openDb()) {
          JOIN bookings b ON b.id = r.booking_id
          JOIN services s ON s.id = b.service_id
          JOIN users u ON u.id = r.customer_id
-         WHERE r.worker_id = $1
+         WHERE r.worker_id = $1 AND COALESCE(r.is_hidden, 0) = 0
          ORDER BY r.id DESC LIMIT 20`,
         [w.id]
       ).catch(() => ({ rows: [] })),
@@ -2421,19 +2452,24 @@ function createApp(db = openDb()) {
       customersRes,
       workersRes,
       verifiedWorkersRes,
+      pendingVerifRes,
       bookingsCountRes,
       statusCountsRes,
       revenueRes,
+      refundsRes,
       complaintsCountRes,
       complaintsByStatusRes,
-      topServicesRes
+      topServicesRes,
+      revByCatRes
     ] = await Promise.all([
       db.queryOne("SELECT COUNT(*) AS c FROM users WHERE role = 'customer'"),
       db.queryOne("SELECT COUNT(*) AS c FROM users WHERE role = 'worker'"),
-      db.queryOne("SELECT COUNT(*) AS c FROM users WHERE role = 'worker' AND id_verified = 1"),
+      db.queryOne("SELECT COUNT(*) AS c FROM users WHERE role = 'worker' AND COALESCE(id_verified, 0) = 1 AND COALESCE(verification_status, 'approved') = 'approved'"),
+      db.queryOne("SELECT COUNT(*) AS c FROM users WHERE role = 'worker' AND COALESCE(verification_status, 'approved') = 'pending'"),
       db.queryOne("SELECT COUNT(*) AS c FROM bookings"),
       db.query("SELECT status, COUNT(*) AS count FROM bookings GROUP BY status"),
       db.queryOne("SELECT COALESCE(SUM(total), 0) AS rev FROM bookings WHERE paid = 1"),
+      db.queryOne("SELECT COALESCE(SUM(amount), 0) AS total_refunds, COUNT(*) AS refund_count FROM refunds WHERE status = 'processed'").catch(() => ({ total_refunds: 0, refund_count: 0 })),
       db.queryOne("SELECT COUNT(*) AS c FROM complaints"),
       db.query("SELECT status, COUNT(*) AS count FROM complaints GROUP BY status"),
       db.query(
@@ -2443,6 +2479,13 @@ function createApp(db = openDb()) {
          GROUP BY s.id, s.name, s.cat
          ORDER BY bookings_count DESC, total_revenue DESC
          LIMIT 6`
+      ),
+      db.query(
+        `SELECT s.cat, COUNT(b.id) AS bookings_count, COALESCE(SUM(CASE WHEN b.paid = 1 THEN b.total ELSE 0 END), 0) AS paid_revenue
+         FROM services s
+         LEFT JOIN bookings b ON b.service_id = s.id
+         GROUP BY s.cat
+         ORDER BY paid_revenue DESC, bookings_count DESC`
       )
     ]);
 
@@ -2454,6 +2497,12 @@ function createApp(db = openDb()) {
       bookingStatusMap[r.status] = Number(r.count);
     });
 
+    const pendingBookings = Number(bookingStatusMap.requested || 0);
+    const acceptedBookings = Number(bookingStatusMap.assigned || 0);
+    const activeBookings = Number(bookingStatusMap.on_the_way || 0) + Number(bookingStatusMap.inspecting || 0) + Number(bookingStatusMap.quoted || 0) + Number(bookingStatusMap.in_progress || 0);
+    const completedBookings = Number(bookingStatusMap.completed || 0) + Number(bookingStatusMap.closed || 0);
+    const cancelledBookings = Number(bookingStatusMap.cancelled || 0);
+
     const complaintStatusMap = {};
     (complaintsByStatusRes.rows || []).forEach(r => {
       complaintStatusMap[r.status] = Number(r.count);
@@ -2464,16 +2513,191 @@ function createApp(db = openDb()) {
         total_customers: Number(customersRes ? customersRes.c : 0),
         total_workers: Number(workersRes ? workersRes.c : 0),
         verified_workers: Number(verifiedWorkersRes ? verifiedWorkersRes.c : 0),
+        pending_provider_verifications: Number(pendingVerifRes ? pendingVerifRes.c : 0),
         total_bookings: Number(bookingsCountRes ? bookingsCountRes.c : 0),
+        pending_bookings: pendingBookings,
+        accepted_bookings: acceptedBookings,
+        active_bookings: activeBookings,
+        completed_bookings: completedBookings,
+        cancelled_bookings: cancelledBookings,
         total_revenue: totalRevenue,
         platform_commission: platformCommission,
         worker_payouts: Math.max(0, totalRevenue - platformCommission),
+        total_refunds: Number(refundsRes?.total_refunds || 0),
+        refund_count: Number(refundsRes?.refund_count || 0),
         bookings_by_status: bookingStatusMap,
         total_complaints: Number(complaintsCountRes ? complaintsCountRes.c : 0),
         complaints_by_status: complaintStatusMap,
-        top_services: topServicesRes.rows
+        top_services: topServicesRes.rows,
+        revenue_by_category: revByCatRes.rows || []
       }
     });
+  }));
+
+  app.get('/api/admin/customers', auth('admin'), h(async (req, res) => {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+    const offset = (page - 1) * limit;
+    const status = req.query.status ? String(req.query.status).trim().toLowerCase() : '';
+    const q = req.query.q ? String(req.query.q).trim() : '';
+    const sort = String(req.query.sort || 'newest');
+
+    const conditions = ["u.role = 'customer'"];
+    const params = [];
+    let idx = 1;
+    if (['active', 'suspended'].includes(status)) {
+      conditions.push(`COALESCE(u.account_status, 'active') = $${idx++}`);
+      params.push(status);
+    }
+    if (q) {
+      conditions.push(`(u.name ILIKE $${idx} OR COALESCE(u.email, '') ILIKE $${idx} OR u.phone LIKE $${idx})`);
+      params.push(`%${q}%`);
+      idx++;
+    }
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    const countRow = await db.queryOne(`SELECT COUNT(*) AS total FROM users u ${whereClause}`, params);
+    const total = Number(countRow?.total || 0);
+
+    const orderBy = sort === 'name'
+      ? 'ORDER BY LOWER(u.name) ASC, u.id DESC'
+      : (sort === 'oldest' ? 'ORDER BY u.id ASC' : 'ORDER BY u.id DESC');
+
+    const rowsRes = await db.query(
+      `SELECT u.id, u.name, u.email, u.phone, u.language, u.wallet,
+              COALESCE(u.account_status, 'active') AS account_status, u.created_at
+       FROM users u ${whereClause} ${orderBy} LIMIT $${idx} OFFSET $${idx + 1}`,
+      [...params, limit, offset]
+    );
+
+    const customers = [];
+    for (const c of rowsRes.rows || []) {
+      const agg = await db.queryOne(
+        `SELECT COUNT(*) AS bookings_count, COALESCE(SUM(CASE WHEN paid = 1 THEN total ELSE 0 END), 0) AS total_spent
+         FROM bookings WHERE customer_id = $1`,
+        [c.id]
+      );
+      customers.push({
+        ...c,
+        bookings_count: Number(agg?.bookings_count || 0),
+        total_spent: Number(agg?.total_spent || 0)
+      });
+    }
+    if (sort === 'bookings') customers.sort((a, b) => b.bookings_count - a.bookings_count);
+
+    ok(res, { customers, page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) });
+  }));
+
+  app.get('/api/admin/customers/:id/bookings', auth('admin'), h(async (req, res) => {
+    const cid = Number(req.params.id);
+    const customer = await db.queryOne("SELECT id, name, email, phone, COALESCE(account_status, 'active') AS account_status, created_at FROM users WHERE id = $1 AND role = 'customer'", [cid]);
+    if (!customer) bad(404, 'Customer nahi mila');
+    const rowsRes = await db.query(
+      `SELECT b.id, b.status, b.total, b.paid, b.pay, b.slot, b.scheduled_date, b.address, b.created_at,
+              s.name AS service_name, s.cat, w.name AS worker_name
+       FROM bookings b
+       JOIN services s ON s.id = b.service_id
+       LEFT JOIN users w ON w.id = b.worker_id
+       WHERE b.customer_id = $1 ORDER BY b.id DESC LIMIT 100`,
+      [cid]
+    );
+    ok(res, { customer, bookings: rowsRes.rows || [] });
+  }));
+
+  app.post('/api/admin/customers/:id/status', auth('admin'), h(async (req, res) => {
+    const cid = Number(req.params.id);
+    const nextStatus = String(req.body?.status || '').trim().toLowerCase();
+    const reason = req.body?.reason ? String(req.body.reason).trim().slice(0, 250) : null;
+    if (!['active', 'suspended'].includes(nextStatus)) bad(400, 'Account status active ya suspended hona chahiye');
+    const customer = await db.queryOne("SELECT * FROM users WHERE id = $1 AND role = 'customer'", [cid]);
+    if (!customer) bad(404, 'Customer nahi mila');
+
+    await db.query(
+      `UPDATE users SET account_status = $1, token_version = CASE WHEN $1 = 'suspended' THEN token_version + 1 ELSE token_version END WHERE id = $2`,
+      [nextStatus, cid]
+    );
+    await logAdminAudit(req.user.id, `customer_${nextStatus}`, 'customer', cid, { reason, previous_status: customer.account_status || 'active' });
+    const updated = await db.queryOne('SELECT * FROM users WHERE id = $1', [cid]);
+    ok(res, { customer: pub(updated), message: nextStatus === 'suspended' ? 'Customer account suspend kar diya gaya' : 'Customer account reactivate kar diya gaya' });
+  }));
+
+  app.get('/api/admin/providers', auth('admin'), h(async (req, res) => {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+    const offset = (page - 1) * limit;
+    const vStatus = req.query.verification_status ? String(req.query.verification_status).trim().toLowerCase() : '';
+    const category = req.query.category ? String(req.query.category).trim() : '';
+    const online = req.query.online;
+    const q = req.query.q ? String(req.query.q).trim() : '';
+    const sort = String(req.query.sort || 'newest');
+
+    const conditions = ["u.role = 'worker'"];
+    const params = [];
+    let idx = 1;
+    if (['pending', 'approved', 'rejected', 'suspended'].includes(vStatus)) {
+      conditions.push(`COALESCE(u.verification_status, 'approved') = $${idx++}`);
+      params.push(vStatus);
+    }
+    if (category) {
+      conditions.push(`u.skill = $${idx++}`);
+      params.push(category);
+    }
+    if (online === '1' || online === '0') {
+      conditions.push(`u.online = $${idx++}`);
+      params.push(Number(online));
+    }
+    if (q) {
+      conditions.push(`(u.name ILIKE $${idx} OR u.phone LIKE $${idx} OR COALESCE(u.email, '') ILIKE $${idx} OR u.skill ILIKE $${idx})`);
+      params.push(`%${q}%`);
+      idx++;
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    const countRow = await db.queryOne(`SELECT COUNT(*) AS total FROM users u ${whereClause}`, params);
+    const total = Number(countRow?.total || 0);
+
+    const rowsRes = await db.query(
+      `SELECT u.* FROM users u ${whereClause} ORDER BY u.id DESC LIMIT $${idx} OFFSET $${idx + 1}`,
+      [...params, limit, offset]
+    );
+
+    const providers = [];
+    for (const w of rowsRes.rows || []) {
+      const [revRes, jobsRes, earnRes] = await Promise.all([
+        db.queryOne('SELECT ROUND(AVG(rating)::numeric, 1) AS avg_rating, COUNT(*) AS review_count FROM reviews WHERE worker_id = $1 AND COALESCE(is_hidden, 0) = 0', [w.id]).catch(() => ({ avg_rating: null, review_count: 0 })),
+        db.queryOne("SELECT COUNT(*) AS c FROM bookings WHERE worker_id = $1 AND status IN ('completed', 'closed')", [w.id]),
+        db.queryOne('SELECT COALESCE(SUM(amount), 0) AS total FROM wallet_tx WHERE user_id = $1 AND amount > 0', [w.id])
+      ]);
+      providers.push({
+        id: w.id,
+        name: w.name,
+        email: w.email || null,
+        phone: w.phone,
+        skill: w.skill,
+        service_categories: getProviderCategories(w),
+        experience_years: w.experience_years != null ? Number(w.experience_years) : 0,
+        service_areas: w.service_areas || '',
+        online: Boolean(w.online),
+        id_verified: Number(w.id_verified ?? 1),
+        verification_status: getProviderVerificationStatus(w),
+        verification_doc_type: w.verification_doc_type || null,
+        verification_notes: w.verification_notes || null,
+        verification_submitted_at: w.verification_submitted_at || null,
+        id_document_url: w.id_document_url || null,
+        account_status: w.account_status || 'active',
+        wallet: Number(w.wallet || 0),
+        avg_rating: revRes?.avg_rating ? Number(revRes.avg_rating) : 0,
+        review_count: Number(revRes?.review_count || 0),
+        completed_jobs: Number(jobsRes?.c || 0),
+        earnings: Number(earnRes?.total || 0),
+        created_at: w.created_at || null
+      });
+    }
+
+    if (sort === 'rating') providers.sort((a, b) => b.avg_rating - a.avg_rating);
+    else if (sort === 'jobs') providers.sort((a, b) => b.completed_jobs - a.completed_jobs);
+    else if (sort === 'earnings') providers.sort((a, b) => b.earnings - a.earnings);
+
+    ok(res, { providers, page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) });
   }));
 
   app.get('/api/admin/users', auth('admin'), h(async (req, res) => {
@@ -2498,7 +2722,8 @@ function createApp(db = openDb()) {
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const result = await db.query(
-      `SELECT id, name, phone, role, skill, wallet, online, id_verified, experience_years, service_areas
+      `SELECT id, name, phone, email, role, skill, wallet, online, id_verified, verification_status,
+              verification_doc_type, verification_notes, account_status, experience_years, service_areas, created_at
        FROM users
        ${whereClause}
        ORDER BY id DESC LIMIT 100`,
@@ -2515,14 +2740,22 @@ function createApp(db = openDb()) {
       ? requestedStatus
       : (req.body.verified !== false ? 'approved' : 'rejected');
     const verified = nextStatus === 'approved' ? 1 : 0;
+    const nextAcctStatus = nextStatus === 'suspended' ? 'suspended' : 'active';
     const notes = req.body?.notes ? String(req.body.notes).trim().slice(0, 300) : null;
     const worker = await db.queryOne("SELECT * FROM users WHERE id = $1 AND role = 'worker'", [techId]);
     if (!worker) bad(404, 'Technician nahi mila');
 
     await db.query(
-      'UPDATE users SET id_verified = $1, verification_status = $2, verification_notes = $3 WHERE id = $4',
-      [verified, nextStatus, notes, techId]
+      `UPDATE users
+       SET id_verified = $1,
+           verification_status = $2,
+           verification_notes = $3,
+           account_status = $4,
+           token_version = CASE WHEN $4 = 'suspended' THEN token_version + 1 ELSE token_version END
+       WHERE id = $5`,
+      [verified, nextStatus, notes, nextAcctStatus, techId]
     );
+    await logAdminAudit(req.user.id, `provider_${nextStatus}`, 'provider', techId, { notes, verified: Boolean(verified) });
     await notifyUser({
       userId: techId,
       title: `Verification Status: ${nextStatus.toUpperCase()}`,
@@ -2540,8 +2773,60 @@ function createApp(db = openDb()) {
   }));
 
   app.get('/api/admin/bookings', auth('admin'), h(async (req, res) => {
-    const { status, limit } = req.query;
-    const maxLimit = Math.min(Number(limit) || 100, 200);
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 25));
+    const offset = (page - 1) * limit;
+    const status = req.query.status ? String(req.query.status).trim().toLowerCase() : '';
+    const q = req.query.q ? String(req.query.q).trim() : '';
+    const date = req.query.date ? String(req.query.date).trim().slice(0, 10) : '';
+    const sort = String(req.query.sort || 'newest');
+
+    const conditions = [];
+    const params = [];
+    let idx = 1;
+
+    if (status && status !== 'all') {
+      if (status === 'active') {
+        conditions.push("b.status IN ('on_the_way', 'inspecting', 'quoted', 'in_progress')");
+      } else {
+        conditions.push(`b.status = $${idx++}`);
+        params.push(status);
+      }
+    }
+    if (date) {
+      conditions.push(`(b.scheduled_date = $${idx} OR CAST(b.created_at AS TEXT) LIKE $${idx + 1})`);
+      params.push(date, `${date}%`);
+      idx += 2;
+    }
+    if (q) {
+      const idMatch = /^\d+$/.test(q) ? Number(q) : null;
+      if (idMatch) {
+        conditions.push(`(b.id = $${idx} OR c.name ILIKE $${idx + 1} OR s.name ILIKE $${idx + 1})`);
+        params.push(idMatch, `%${q}%`);
+        idx += 2;
+      } else {
+        conditions.push(`(c.name ILIKE $${idx} OR c.phone LIKE $${idx} OR s.name ILIKE $${idx} OR COALESCE(w.name, '') ILIKE $${idx})`);
+        params.push(`%${q}%`);
+        idx++;
+      }
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const countRow = await db.queryOne(
+      `SELECT COUNT(*) AS total
+       FROM bookings b
+       JOIN services s ON s.id = b.service_id
+       JOIN users c ON c.id = b.customer_id
+       LEFT JOIN users w ON w.id = b.worker_id
+       ${whereClause}`,
+      params
+    );
+    const total = Number(countRow?.total || 0);
+
+    const orderBy = sort === 'oldest'
+      ? 'ORDER BY b.id ASC'
+      : (sort === 'amount_desc' ? 'ORDER BY b.total DESC, b.id DESC' : 'ORDER BY b.id DESC');
+
     const querySql = `
       SELECT b.*, s.name AS service_name, s.cat, s.price AS base_price,
              c.name AS customer_name, c.phone AS customer_phone,
@@ -2550,16 +2835,29 @@ function createApp(db = openDb()) {
       JOIN services s ON s.id = b.service_id
       JOIN users c ON c.id = b.customer_id
       LEFT JOIN users w ON w.id = b.worker_id
-      WHERE ($1::text IS NULL OR b.status = $1)
-      ORDER BY b.id DESC
-      LIMIT $2
+      ${whereClause}
+      ${orderBy}
+      LIMIT $${idx} OFFSET $${idx + 1}
     `;
-    const result = await db.query(querySql, [status || null, maxLimit]);
+    const result = await db.query(querySql, [...params, limit, offset]);
     const sanitized = result.rows.map((b) => {
       if (ACTIVE_TRACKING_STATUSES.includes(b.status) && b.tracking_active) return b;
       return { ...b, worker_lat: null, worker_lng: null, eta_minutes: null, tracking_active: 0 };
     });
-    ok(res, { bookings: sanitized });
+    ok(res, { bookings: sanitized, page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) });
+  }));
+
+  app.get('/api/admin/bookings/:id/history', auth('admin'), h(async (req, res) => {
+    const b = await load(req.params.id);
+    const histRes = await db.query(
+      `SELECT h.id, h.old_status, h.new_status, h.notes, h.created_at, u.name AS changed_by_name, u.role AS changed_by_role
+       FROM booking_status_history h
+       LEFT JOIN users u ON u.id = h.changed_by_user_id
+       WHERE h.booking_id = $1
+       ORDER BY h.id ASC`,
+      [b.id]
+    );
+    ok(res, { booking: b, history: histRes.rows || [] });
   }));
 
   app.post('/api/admin/bookings/:id/assign', auth('admin'), h(async (req, res) => {
@@ -2569,17 +2867,28 @@ function createApp(db = openDb()) {
 
     const b = await db.queryOne('SELECT * FROM bookings WHERE id = $1', [bId]);
     if (!b) bad(404, 'Booking nahi mili');
+    if (['completed', 'closed', 'cancelled'].includes(b.status)) {
+      bad(409, 'Completed ya cancelled booking ko reassign nahi kiya ja sakta');
+    }
 
     const worker = await db.queryOne("SELECT * FROM users WHERE id = $1 AND role = 'worker'", [workerId]);
     if (!worker) bad(404, 'Technician nahi mila');
+    if (!isProviderApproved(worker) || worker.account_status === 'suspended') {
+      bad(400, 'Sirf approved aur active service provider ko assign kiya ja sakta hai');
+    }
 
     const newStatus = b.status === 'requested' ? 'assigned' : b.status;
     await db.transaction(async (tx) => {
       await tx.query('UPDATE bookings SET worker_id = $1, status = $2 WHERE id = $3', [workerId, newStatus, b.id]);
       await tx.query(
         'INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by_user_id, notes) VALUES ($1, $2, $3, $4, $5)',
-        [b.id, b.status, newStatus, req.user.id, `Admin manual assignment: Technician ${worker.name} (ID: ${worker.id})`]
+        [b.id, b.status, newStatus, req.user.id, `Founder assignment: Provider ${worker.name} (ID: ${worker.id})`]
       );
+    });
+    await logAdminAudit(req.user.id, b.worker_id ? 'booking_reassign' : 'booking_assign', 'booking', b.id, {
+      previous_worker_id: b.worker_id || null,
+      worker_id: worker.id,
+      worker_name: worker.name
     });
 
     await notifyUser({
@@ -2590,14 +2899,118 @@ function createApp(db = openDb()) {
       type: 'booking_status',
       dedupeKey: `booking_${b.id}_admin_assigned_${worker.id}`
     });
+    await notifyUser({
+      userId: worker.id,
+      bookingId: b.id,
+      title: `New Job Assigned (#${b.id})`,
+      body: `Founder team ne aapko booking #${b.id} (${b.slot}) assign ki hai.`,
+      type: 'job_assigned',
+      dedupeKey: `booking_${b.id}_worker_assigned_${worker.id}_${Date.now()}`
+    });
 
     const updated = await load(b.id);
     ok(res, { booking: view(updated, req.user), message: `Technician ${worker.name} assign ho gaya` });
   }));
 
+  app.post('/api/admin/bookings/:id/cancel', auth('admin'), h(async (req, res) => {
+    const b = await load(req.params.id);
+    if (['completed', 'closed', 'cancelled'].includes(b.status)) {
+      bad(409, 'Is status mein booking cancel nahi ho sakti');
+    }
+    const reason = req.body?.reason ? String(req.body.reason).trim().slice(0, 300) : 'Cancelled by Founder/Admin';
+    await move(
+      b,
+      b.status,
+      'cancelled',
+      { cancellation_reason: reason, cancelled_at: new Date().toISOString(), tracking_active: 0 },
+      req.user.id
+    );
+    await logAdminAudit(req.user.id, 'booking_cancel', 'booking', b.id, { reason, previous_status: b.status });
+    if (b.worker_id) {
+      await notifyUser({
+        userId: b.worker_id,
+        bookingId: b.id,
+        title: `Booking #${b.id} Cancelled`,
+        body: `Booking #${b.id} admin dwara cancel kar di gayi hai. Reason: ${reason}`,
+        type: 'booking_status',
+        dedupeKey: `booking_${b.id}_admin_cancel_w_${Date.now()}`
+      });
+    }
+    ok(res, { booking: view(await load(b.id), req.user), message: 'Booking cancel kar di gayi' });
+  }));
+
+  app.get('/api/admin/categories', auth('admin'), h(async (req, res) => {
+    const rowsRes = await db.query(
+      `SELECT c.id, c.name, c.slug, c.icon, c.description, c.is_active, c.sort_order, c.created_at,
+              COUNT(s.id) AS service_count
+       FROM categories c
+       LEFT JOIN services s ON LOWER(s.cat) = LOWER(c.name)
+       GROUP BY c.id, c.name, c.slug, c.icon, c.description, c.is_active, c.sort_order, c.created_at
+       ORDER BY c.sort_order ASC, c.id ASC`
+    );
+    ok(res, { categories: rowsRes.rows || [] });
+  }));
+
+  app.post('/api/admin/categories', auth('admin'), h(async (req, res) => {
+    const cleanName = String(req.body?.name || '').trim().slice(0, 80);
+    if (cleanName.length < 2) bad(400, 'Category ka naam kam se kam 2 akshar ka ho');
+    const slug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `cat-${Date.now()}`;
+    const icon = String(req.body?.icon || 'tool').trim().slice(0, 40);
+    const description = req.body?.description ? String(req.body.description).trim().slice(0, 300) : `${cleanName} services`;
+    const sortOrder = Number(req.body?.sort_order) || 99;
+
+    const dup = await db.queryOne('SELECT id FROM categories WHERE LOWER(name) = LOWER($1) OR LOWER(slug) = LOWER($2)', [cleanName, slug]);
+    if (dup) bad(409, 'Ye category pehle se maujood hai');
+
+    const ins = await db.query(
+      'INSERT INTO categories (name, slug, icon, description, is_active, sort_order) VALUES ($1, $2, $3, $4, 1, $5) RETURNING id',
+      [cleanName, slug, icon, description, sortOrder]
+    );
+    const category = await db.queryOne('SELECT * FROM categories WHERE id = $1', [ins.rows[0].id]);
+    await logAdminAudit(req.user.id, 'category_create', 'category', category.id, { name: cleanName });
+    ok(res, { category, message: 'Nayi service category add ho gayi' }, 201);
+  }));
+
+  app.put('/api/admin/categories/:id', auth('admin'), h(async (req, res) => {
+    const catId = Number(req.params.id);
+    const existing = await db.queryOne('SELECT * FROM categories WHERE id = $1', [catId]);
+    if (!existing) bad(404, 'Category nahi mili');
+    const { name, icon, description, is_active, sort_order } = req.body || {};
+    const updates = [];
+    const params = [];
+    let idx = 1;
+    if (name && String(name).trim().length >= 2) {
+      updates.push(`name = $${idx++}`);
+      params.push(String(name).trim().slice(0, 80));
+    }
+    if (icon) {
+      updates.push(`icon = $${idx++}`);
+      params.push(String(icon).trim().slice(0, 40));
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${idx++}`);
+      params.push(String(description || '').trim().slice(0, 300));
+    }
+    if (is_active !== undefined) {
+      updates.push(`is_active = $${idx++}`);
+      params.push(is_active ? 1 : 0);
+    }
+    if (sort_order !== undefined) {
+      updates.push(`sort_order = $${idx++}`);
+      params.push(Number(sort_order) || 0);
+    }
+    if (updates.length) {
+      params.push(catId);
+      await db.query(`UPDATE categories SET ${updates.join(', ')} WHERE id = $${idx}`, params);
+      await logAdminAudit(req.user.id, 'category_update', 'category', catId, req.body);
+    }
+    const category = await db.queryOne('SELECT * FROM categories WHERE id = $1', [catId]);
+    ok(res, { category, message: 'Category update ho gayi' });
+  }));
+
   app.post('/api/admin/services', auth('admin'), h(async (req, res) => {
     const { cat, name, price, rating } = req.body || {};
-    if (!cat || !CATEGORIES.includes(cat)) bad(400, 'Valid category chunein');
+    if (!cat || !(await isValidCategoryName(cat))) bad(400, 'Valid category chunein');
     if (!name || String(name).trim().length < 2) bad(400, 'Service ka naam likhein');
     const p = Number(price);
     if (!Number.isInteger(p) || p < 1 || p > 100000) bad(400, 'Valid service price likhein (₹1 se ₹100,000)');
@@ -2607,9 +3020,10 @@ function createApp(db = openDb()) {
       `INSERT INTO services (cat, name, price, rating)
        VALUES ($1, $2, $3, $4)
        RETURNING id`,
-      [cat, String(name).trim(), p, r]
+      [String(cat).trim(), String(name).trim(), p, r]
     );
     const service = await db.queryOne('SELECT * FROM services WHERE id = $1', [ins.rows[0].id]);
+    await logAdminAudit(req.user.id, 'service_create', 'service', service.id, { cat, name: service.name, price: p });
     ok(res, { service, message: 'Nayi service catalog mein add ho gayi' }, 201);
   }));
 
@@ -2623,9 +3037,9 @@ function createApp(db = openDb()) {
     const values = [];
     let idx = 1;
 
-    if (cat && CATEGORIES.includes(cat)) {
+    if (cat && (await isValidCategoryName(cat))) {
       updates.push(`cat = $${idx++}`);
-      values.push(cat);
+      values.push(String(cat).trim());
     }
     if (name && String(name).trim()) {
       updates.push(`name = $${idx++}`);
@@ -2648,10 +3062,303 @@ function createApp(db = openDb()) {
     if (updates.length > 0) {
       values.push(sId);
       await db.query(`UPDATE services SET ${updates.join(', ')} WHERE id = $${idx}`, values);
+      await logAdminAudit(req.user.id, 'service_update', 'service', sId, req.body);
     }
 
     const updated = await db.queryOne('SELECT * FROM services WHERE id = $1', [sId]);
     ok(res, { service: updated, message: 'Service update ho gayi' });
+  }));
+
+  app.get('/api/admin/payments', auth('admin'), h(async (req, res) => {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 25));
+    const offset = (page - 1) * limit;
+    const pay = req.query.pay ? String(req.query.pay).trim() : '';
+    const paid = req.query.paid;
+
+    const conditions = [];
+    const params = [];
+    let idx = 1;
+    if (['wallet', 'cash', 'razorpay'].includes(pay)) {
+      conditions.push(`b.pay = $${idx++}`);
+      params.push(pay);
+    }
+    if (paid === '1' || paid === '0') {
+      conditions.push(`b.paid = $${idx++}`);
+      params.push(Number(paid));
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const countRow = await db.queryOne(`SELECT COUNT(*) AS total FROM bookings b ${whereClause}`, params);
+    const total = Number(countRow?.total || 0);
+
+    const rowsRes = await db.query(
+      `SELECT b.id AS booking_id, b.total, b.parts, b.discount_amount, b.emergency_fee, b.pay, b.paid, b.status,
+              b.completed_at, b.created_at, s.name AS service_name, s.cat, s.price AS base_price,
+              c.id AS customer_id, c.name AS customer_name, c.phone AS customer_phone,
+              w.name AS worker_name,
+              (SELECT po.provider_payment_id FROM payment_orders po WHERE po.booking_id = b.id AND po.status = 'paid' ORDER BY po.id DESC LIMIT 1) AS gateway_payment_id
+       FROM bookings b
+       JOIN services s ON s.id = b.service_id
+       JOIN users c ON c.id = b.customer_id
+       LEFT JOIN users w ON w.id = b.worker_id
+       ${whereClause}
+       ORDER BY b.id DESC
+       LIMIT $${idx} OFFSET $${idx + 1}`,
+      [...params, limit, offset]
+    );
+    const sumRow = await db.queryOne(
+      `SELECT COALESCE(SUM(CASE WHEN paid = 1 THEN total ELSE 0 END), 0) AS collected,
+              COALESCE(SUM(CASE WHEN paid = 0 AND status IN ('completed', 'closed') THEN total ELSE 0 END), 0) AS pending
+       FROM bookings`
+    );
+    const collected = Number(sumRow?.collected || 0);
+    ok(res, {
+      summary: {
+        collected_revenue: collected,
+        platform_commission: Math.round(collected * COMMISSION),
+        pending_collection: Number(sumRow?.pending || 0)
+      },
+      payments: rowsRes.rows || [],
+      page,
+      limit,
+      total,
+      pages: Math.max(1, Math.ceil(total / limit))
+    });
+  }));
+
+  app.get('/api/admin/refunds', auth('admin'), h(async (req, res) => {
+    const rowsRes = await db.query(
+      `SELECT r.*, u.name AS customer_name, u.phone AS customer_phone,
+              a.name AS admin_name
+       FROM refunds r
+       JOIN users u ON u.id = r.user_id
+       LEFT JOIN users a ON a.id = r.processed_by_admin_id
+       ORDER BY r.id DESC LIMIT 100`
+    );
+    ok(res, { refunds: rowsRes.rows || [] });
+  }));
+
+  app.post('/api/admin/refunds', auth('admin'), h(async (req, res) => {
+    const bookingId = req.body?.booking_id ? Number(req.body.booking_id) : null;
+    const complaintId = req.body?.complaint_id ? Number(req.body.complaint_id) : null;
+    let userId = req.body?.user_id ? Number(req.body.user_id) : null;
+    const amount = Math.round(Number(req.body?.amount) || 0);
+    const reason = String(req.body?.reason || '').trim().slice(0, 300);
+
+    if (!Number.isInteger(amount) || amount <= 0 || amount > 100000) bad(400, 'Valid positive refund amount daalein');
+    if (reason.length < 3) bad(400, 'Refund reason likhein');
+
+    if (bookingId && !userId) {
+      const b = await db.queryOne('SELECT customer_id FROM bookings WHERE id = $1', [bookingId]);
+      if (!b) bad(404, 'Booking nahi mili');
+      userId = b.customer_id;
+    }
+    if (!userId) bad(400, 'Customer ya Booking ID chunein');
+
+    const targetUser = await db.queryOne('SELECT id, name FROM users WHERE id = $1', [userId]);
+    if (!targetUser) bad(404, 'Customer nahi mila');
+
+    let refundId = null;
+    await db.transaction(async (tx) => {
+      await credit(userId, `FixMate Refund${bookingId ? ` (Booking #${bookingId})` : ''}: ${reason.slice(0, 40)}`, amount, tx);
+      const ins = await tx.query(
+        `INSERT INTO refunds (booking_id, user_id, complaint_id, amount, reason, status, processed_by_admin_id)
+         VALUES ($1, $2, $3, $4, $5, 'processed', $6) RETURNING id`,
+        [bookingId, userId, complaintId, amount, reason, req.user.id]
+      );
+      refundId = ins.rows[0].id;
+    });
+
+    await logAdminAudit(req.user.id, 'refund_issued', 'refund', refundId, { booking_id: bookingId, user_id: userId, amount, reason });
+    await notifyUser({
+      userId,
+      bookingId,
+      title: `Refund Credited (₹${amount})`,
+      body: `Aapke FixMate wallet mein ₹${amount} ka refund credit ho gaya hai. Reason: ${reason}`,
+      type: 'refund',
+      dedupeKey: `refund_${refundId}`
+    });
+
+    const refund = await db.queryOne('SELECT * FROM refunds WHERE id = $1', [refundId]);
+    ok(res, { refund, message: `₹${amount} refund ${targetUser.name} ke wallet mein credit ho gaya` }, 201);
+  }));
+
+  app.get('/api/admin/reviews', auth('admin'), h(async (req, res) => {
+    const q = req.query.q ? String(req.query.q).trim() : '';
+    const hidden = req.query.hidden;
+    const conditions = [];
+    const params = [];
+    let idx = 1;
+    if (hidden === '1' || hidden === '0') {
+      conditions.push(`COALESCE(r.is_hidden, 0) = $${idx++}`);
+      params.push(Number(hidden));
+    }
+    if (q) {
+      conditions.push(`(COALESCE(r.comment, '') ILIKE $${idx} OR c.name ILIKE $${idx} OR COALESCE(w.name, '') ILIKE $${idx} OR s.name ILIKE $${idx})`);
+      params.push(`%${q}%`);
+      idx++;
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const rowsRes = await db.query(
+      `SELECT r.*, c.name AS customer_name, w.name AS worker_name, s.name AS service_name, s.id AS service_id
+       FROM reviews r
+       JOIN bookings b ON b.id = r.booking_id
+       JOIN services s ON s.id = b.service_id
+       JOIN users c ON c.id = r.customer_id
+       LEFT JOIN users w ON w.id = r.worker_id
+       ${whereClause}
+       ORDER BY r.id DESC LIMIT 100`,
+      params
+    );
+    ok(res, { reviews: rowsRes.rows || [] });
+  }));
+
+  app.post('/api/admin/reviews/:id/moderate', auth('admin'), h(async (req, res) => {
+    const rId = Number(req.params.id);
+    const rev = await db.queryOne('SELECT r.*, b.service_id FROM reviews r JOIN bookings b ON b.id = r.booking_id WHERE r.id = $1', [rId]);
+    if (!rev) bad(404, 'Review nahi mila');
+    const hidden = req.body?.hidden ? 1 : 0;
+    await db.query('UPDATE reviews SET is_hidden = $1 WHERE id = $2', [hidden, rId]);
+    try {
+      const avgRes = await db.queryOne(
+        'SELECT ROUND(AVG(r.rating)::numeric, 1) AS avg_rating FROM reviews r JOIN bookings b ON b.id = r.booking_id WHERE b.service_id = $1 AND COALESCE(r.is_hidden, 0) = 0',
+        [rev.service_id]
+      );
+      if (avgRes && avgRes.avg_rating) {
+        await db.query('UPDATE services SET rating = $1 WHERE id = $2', [avgRes.avg_rating, rev.service_id]);
+      }
+    } catch {}
+    await logAdminAudit(req.user.id, hidden ? 'review_hide' : 'review_unhide', 'review', rId, { hidden });
+    ok(res, { message: hidden ? 'Review public listing se hide kar diya gaya' : 'Review dubara visible kar diya gaya' });
+  }));
+
+  app.delete('/api/admin/reviews/:id', auth('admin'), h(async (req, res) => {
+    const rId = Number(req.params.id);
+    const rev = await db.queryOne('SELECT id FROM reviews WHERE id = $1', [rId]);
+    if (!rev) bad(404, 'Review nahi mila');
+    await db.query('DELETE FROM reviews WHERE id = $1', [rId]);
+    await logAdminAudit(req.user.id, 'review_delete', 'review', rId, null);
+    ok(res, { message: 'Review delete kar diya gaya' });
+  }));
+
+  app.get('/api/admin/notifications', auth('admin'), h(async (req, res) => {
+    const rowsRes = await db.query(
+      `SELECT n.id, n.user_id, n.booking_id, n.title, n.body, n.type, n.is_read, n.created_at,
+              u.name AS user_name, u.role AS user_role
+       FROM notifications n
+       JOIN users u ON u.id = n.user_id
+       ORDER BY n.id DESC LIMIT 100`
+    );
+    ok(res, { notifications: rowsRes.rows || [] });
+  }));
+
+  app.post('/api/admin/notifications/broadcast', auth('admin'), h(async (req, res) => {
+    const target = String(req.body?.target || 'all').toLowerCase();
+    const userId = req.body?.user_id ? Number(req.body.user_id) : null;
+    const title = String(req.body?.title || '').trim().slice(0, 140);
+    const body = String(req.body?.body || '').trim().slice(0, 500);
+    const type = String(req.body?.type || 'admin_broadcast').trim().slice(0, 40);
+    if (!title || body.length < 3) bad(400, 'Notification title aur message likhein');
+
+    let recipients = [];
+    if (target === 'user' && userId) {
+      const u = await db.queryOne('SELECT id FROM users WHERE id = $1', [userId]);
+      if (!u) bad(404, 'Target user nahi mila');
+      recipients = [u.id];
+    } else if (target === 'customers') {
+      const r = await db.query("SELECT id FROM users WHERE role = 'customer' AND COALESCE(account_status, 'active') = 'active'");
+      recipients = (r.rows || []).map((x) => x.id);
+    } else if (target === 'providers') {
+      const r = await db.query("SELECT id FROM users WHERE role = 'worker' AND COALESCE(account_status, 'active') = 'active'");
+      recipients = (r.rows || []).map((x) => x.id);
+    } else {
+      const r = await db.query("SELECT id FROM users WHERE role IN ('customer', 'worker') AND COALESCE(account_status, 'active') = 'active'");
+      recipients = (r.rows || []).map((x) => x.id);
+    }
+
+    const batchKey = Date.now();
+    for (const uid of recipients) {
+      await notifyUser({
+        userId: uid,
+        title,
+        body,
+        type,
+        dedupeKey: `adm_bc_${batchKey}_${uid}`
+      });
+    }
+    await logAdminAudit(req.user.id, 'notification_broadcast', 'notification', null, { target, count: recipients.length, title });
+    ok(res, { sent_count: recipients.length, message: `${recipients.length} users ko notification bhej diya gaya` }, 201);
+  }));
+
+  app.get('/api/admin/audit-logs', auth('admin'), h(async (req, res) => {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
+    const offset = (page - 1) * limit;
+    const targetType = req.query.target_type ? String(req.query.target_type).trim() : '';
+
+    const whereClause = targetType ? 'WHERE l.target_type = $1' : '';
+    const params = targetType ? [targetType] : [];
+    const countRow = await db.queryOne(`SELECT COUNT(*) AS total FROM admin_audit_logs l ${whereClause}`, params);
+    const total = Number(countRow?.total || 0);
+
+    const rowsRes = await db.query(
+      `SELECT l.*, u.name AS admin_name
+       FROM admin_audit_logs l
+       LEFT JOIN users u ON u.id = l.admin_user_id
+       ${whereClause}
+       ORDER BY l.id DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
+    );
+    ok(res, { logs: rowsRes.rows || [], page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) });
+  }));
+
+  app.get('/api/admin/export/:type', auth('admin'), h(async (req, res) => {
+    const type = String(req.params.type || '').toLowerCase();
+    let headers = [];
+    let rows = [];
+
+    if (type === 'bookings') {
+      headers = ['ID', 'Service', 'Category', 'Customer', 'Customer Phone', 'Provider', 'Status', 'Slot', 'Total (INR)', 'Paid', 'Created At'];
+      const r = await db.query(
+        `SELECT b.id, s.name AS service_name, s.cat, c.name AS customer_name, c.phone AS customer_phone,
+                COALESCE(w.name, 'Unassigned') AS worker_name, b.status, b.slot, b.total, b.paid, b.created_at
+         FROM bookings b JOIN services s ON s.id = b.service_id JOIN users c ON c.id = b.customer_id LEFT JOIN users w ON w.id = b.worker_id
+         ORDER BY b.id DESC LIMIT 2000`
+      );
+      rows = (r.rows || []).map((x) => [x.id, x.service_name, x.cat, x.customer_name, x.customer_phone, x.worker_name, x.status, x.slot, x.total, x.paid ? 'Paid' : 'Unpaid', x.created_at]);
+    } else if (type === 'customers') {
+      headers = ['ID', 'Name', 'Email', 'Phone', 'Account Status', 'Wallet', 'Registered At'];
+      const r = await db.query("SELECT id, name, email, phone, COALESCE(account_status, 'active') AS account_status, wallet, created_at FROM users WHERE role = 'customer' ORDER BY id DESC LIMIT 2000");
+      rows = (r.rows || []).map((x) => [x.id, x.name, x.email || '', x.phone, x.account_status, x.wallet, x.created_at]);
+    } else if (type === 'providers') {
+      headers = ['ID', 'Name', 'Email', 'Phone', 'Skill', 'Experience Yrs', 'Verification Status', 'Online', 'Wallet', 'Service Areas', 'Joined At'];
+      const r = await db.query("SELECT id, name, email, phone, skill, experience_years, COALESCE(verification_status, 'approved') AS verification_status, online, wallet, service_areas, created_at FROM users WHERE role = 'worker' ORDER BY id DESC LIMIT 2000");
+      rows = (r.rows || []).map((x) => [x.id, x.name, x.email || '', x.phone, x.skill, x.experience_years || 0, x.verification_status, x.online ? 'Online' : 'Offline', x.wallet, x.service_areas || '', x.created_at]);
+    } else if (type === 'payments') {
+      headers = ['Booking ID', 'Service', 'Customer', 'Mode', 'Total (INR)', 'Commission 15%', 'Paid', 'Status', 'Date'];
+      const r = await db.query(
+        `SELECT b.id, s.name AS service_name, c.name AS customer_name, b.pay, b.total, b.paid, b.status, b.created_at
+         FROM bookings b JOIN services s ON s.id = b.service_id JOIN users c ON c.id = b.customer_id
+         ORDER BY b.id DESC LIMIT 2000`
+      );
+      rows = (r.rows || []).map((x) => [x.id, x.service_name, x.customer_name, x.pay, x.total, Math.round(Number(x.total || 0) * COMMISSION), x.paid ? 'Paid' : 'Unpaid', x.status, x.created_at]);
+    } else if (type === 'audit-logs') {
+      headers = ['Log ID', 'Admin', 'Action', 'Target Type', 'Target ID', 'Details', 'Timestamp'];
+      const r = await db.query(
+        `SELECT l.id, COALESCE(u.name, 'System') AS admin_name, l.action, l.target_type, l.target_id, l.details_json, l.created_at
+         FROM admin_audit_logs l LEFT JOIN users u ON u.id = l.admin_user_id ORDER BY l.id DESC LIMIT 2000`
+      );
+      rows = (r.rows || []).map((x) => [x.id, x.admin_name, x.action, x.target_type, x.target_id || '', x.details_json || '', x.created_at]);
+    } else {
+      bad(400, 'Invalid export type');
+    }
+
+    await logAdminAudit(req.user.id, 'csv_export', 'export', null, { type, row_count: rows.length });
+    const csvLines = [headers.map(sanitizeCsvCell).join(','), ...rows.map((r) => r.map(sanitizeCsvCell).join(','))];
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="fixmate-${type}-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(csvLines.join('\r\n'));
   }));
 
   app.post('/api/admin/coupons', auth('admin'), h(async (req, res) => {
@@ -2720,8 +3427,14 @@ function createApp(db = openDb()) {
 
       if (refund > 0) {
         await credit(complaint.customer_id, `FixMate Refund (Ticket #${cId}): ${notes.slice(0, 40)}`, refund, tx);
+        await tx.query(
+          `INSERT INTO refunds (booking_id, user_id, complaint_id, amount, reason, status, processed_by_admin_id)
+           VALUES ($1, $2, $3, $4, $5, 'processed', $6)`,
+          [complaint.booking_id || null, complaint.customer_id, cId, refund, notes, req.user.id]
+        );
       }
     });
+    await logAdminAudit(req.user.id, 'complaint_resolve', 'complaint', cId, { status: nextStatus, refund_amount: refund });
 
     const updated = await db.queryOne('SELECT * FROM complaints WHERE id = $1', [cId]);
     ok(res, {

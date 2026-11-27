@@ -81,6 +81,43 @@ let S = {
   reviewBookingId: null,
   reviewRating: 5,
   reviewComment: '',
+  admTab: 'overview',
+  admBookingFilter: 'all',
+  admBookingQ: '',
+  admBookingDate: '',
+  admBookingSort: 'newest',
+  admBookingPage: 1,
+  admBookingsMeta: { page: 1, pages: 1, total: 0 },
+  admProvFilter: 'all',
+  admProvQ: '',
+  admProvSort: 'newest',
+  admProvPage: 1,
+  admProviders: [],
+  admProvidersMeta: { page: 1, pages: 1, total: 0 },
+  admCustFilter: 'all',
+  admCustQ: '',
+  admCustSort: 'newest',
+  admCustPage: 1,
+  admCustomers: [],
+  admCustomersMeta: { page: 1, pages: 1, total: 0 },
+  admCategories: [],
+  admCatalogTab: 'services',
+  admPayments: [],
+  admPaymentsSummary: {},
+  admPaymentsMeta: { page: 1, pages: 1, total: 0 },
+  admPayTab: 'ledger',
+  admPayMode: 'all',
+  admPayPaid: '',
+  admPayPage: 1,
+  admRefunds: [],
+  admReviews: [],
+  admSuppTab: 'complaints',
+  admNotifs: [],
+  admAuditLogs: [],
+  admAuditMeta: { page: 1, pages: 1, total: 0 },
+  admAuditTab: 'logs',
+  admAuditFilter: 'all',
+  admAuditPage: 1,
   wkTab: 'home',
   wkJobsTab: 'upcoming',
   wkEarnTab: 'overview',
@@ -1801,19 +1838,23 @@ function renderModal() {
 
   if (S.modal === 'adminAssign') {
     const b = (S.admBookings || []).find((x) => x.id === S.assignBookingId);
-    const techList = S.admWorkers || [];
+    const techList = (S.admWorkers || []).filter((w) =>
+      (w.verification_status || (w.id_verified ? 'approved' : 'pending')) === 'approved' && w.account_status !== 'suspended'
+    );
     return `<div class="modal-overlay" onclick="closeModal()">
       <div class="modal-sheet" onclick="event.stopPropagation()">
         <div class="modal-header">
-          <h3>${ic('userCheck', 18)} Manual Technician Assignment</h3>
+          <h3>${ic('userCheck', 18)} Assign Approved Provider</h3>
           <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
         <div class="mut" style="font-size:13px;margin-bottom:10px">Booking #${b?.id || ''}: <b>${esc(b?.service_name || '')}</b> (${esc(b?.customer_name || '')})</div>
-        <label style="font-size:13px;font-weight:700">Available Technician Chunein:</label>
-        <select id="adm-assign-worker" style="margin:6px 0 16px">
-          ${techList.map((w) => `<option value="${w.id}">${esc(w.name)} (${esc(w.skill || 'General')}) - ${w.online ? 'Online' : 'Offline'}${w.id_verified ? ' • Verified' : ''}</option>`).join('')}
-        </select>
-        <button class="btn acc" onclick="submitAdminAssign()">${ic('checkCircle', 16)} Technician Assign Karein</button>
+        ${techList.length ? `
+          <label style="font-size:13px;font-weight:700">Approved Provider Chunein:</label>
+          <select id="adm-assign-worker" style="margin:6px 0 16px">
+            ${techList.map((w) => `<option value="${w.id}">${esc(w.name)} (${esc(w.skill || 'General')}) - ${w.online ? 'Online' : 'Offline'}</option>`).join('')}
+          </select>
+          <button class="btn acc" onclick="submitAdminAssign()">${ic('checkCircle', 16)} Provider Assign Karein</button>
+        ` : `<div class="fm-alert warning">${ic('alertTriangle', 15)} Koi approved provider available nahi hai. Pehle Providers tab se KYC approve karein.</div>`}
       </div>
     </div>`;
   }
@@ -3385,18 +3426,22 @@ async function refresh() {
   if (!S.user) return;
   try {
     if (S.user.role === 'admin') {
-      const [analyticsRes, bookingsRes, workersRes, complaintsRes, cpnRes] = await Promise.all([
-        api('GET', '/admin/analytics').catch(() => ({ analytics: {} })),
-        api('GET', '/admin/bookings').catch(() => ({ bookings: [] })),
-        api('GET', '/admin/users?role=worker').catch(() => ({ users: [] })),
-        api('GET', '/admin/complaints').catch(() => ({ complaints: [] })),
-        api('GET', '/coupons').catch(() => ({ coupons: [] }))
-      ]);
-      if (analyticsRes && analyticsRes.analytics) S.admAnalytics = analyticsRes.analytics;
-      if (bookingsRes && bookingsRes.bookings) S.admBookings = bookingsRes.bookings;
-      if (workersRes && workersRes.users) S.admWorkers = workersRes.users;
-      if (complaintsRes && complaintsRes.complaints) S.admComplaints = complaintsRes.complaints;
-      S.coupons = cpnRes.coupons || [];
+      if (typeof window.refreshAdminData === 'function') {
+        await window.refreshAdminData();
+      } else {
+        const [analyticsRes, bookingsRes, workersRes, complaintsRes, cpnRes] = await Promise.all([
+          api('GET', '/admin/analytics').catch(() => ({ analytics: {} })),
+          api('GET', '/admin/bookings').catch(() => ({ bookings: [] })),
+          api('GET', '/admin/users?role=worker').catch(() => ({ users: [] })),
+          api('GET', '/admin/complaints').catch(() => ({ complaints: [] })),
+          api('GET', '/coupons').catch(() => ({ coupons: [] }))
+        ]);
+        if (analyticsRes && analyticsRes.analytics) S.admAnalytics = analyticsRes.analytics;
+        if (bookingsRes && bookingsRes.bookings) S.admBookings = bookingsRes.bookings;
+        if (workersRes && workersRes.users) S.admWorkers = workersRes.users;
+        if (complaintsRes && complaintsRes.complaints) S.admComplaints = complaintsRes.complaints;
+        S.coupons = cpnRes.coupons || [];
+      }
     } else if (S.user.role === 'worker') {
       const [w, b, statsRes, reviewsRes, availRes, payRes, notifRes] = await Promise.all([
         api('GET', '/wallet'),
@@ -3574,17 +3619,17 @@ function render() {
         navDiv.innerHTML = `
           <button id="adm-overview" onclick="setAdmTab('overview')"><span class="ni" data-i="layoutDashboard"></span>Overview</button>
           <button id="adm-bookings" onclick="setAdmTab('bookings')"><span class="ni" data-i="list"></span>Bookings</button>
-          <button id="adm-techs" onclick="setAdmTab('techs')"><span class="ni" data-i="tool"></span>Techs</button>
-          <button id="adm-catalog" onclick="setAdmTab('catalog')"><span class="ni" data-i="tag"></span>Catalog</button>
-          <button id="adm-complaints" onclick="setAdmTab('complaints')"><span class="ni" data-i="alert"></span>Tickets</button>
+          <button id="adm-techs" onclick="setAdmTab('techs')"><span class="ni" data-i="tool"></span>Providers</button>
+          <button id="adm-customers" onclick="setAdmTab('customers')"><span class="ni" data-i="users"></span>Customers</button>
+          <button id="adm-audit" onclick="setAdmTab('audit')"><span class="ni" data-i="shield"></span>Console</button>
         `;
         $('adm-overview')?.classList.toggle('on', cur === 'overview');
         $('adm-bookings')?.classList.toggle('on', cur === 'bookings');
         $('adm-techs')?.classList.toggle('on', cur === 'techs');
-        $('adm-catalog')?.classList.toggle('on', cur === 'catalog');
-        $('adm-complaints')?.classList.toggle('on', cur === 'complaints');
-        const openComplaintsCount = (S.admComplaints || []).filter((c) => c.status === 'open').length;
-        if (openComplaintsCount) $('adm-complaints')?.insertAdjacentHTML('beforeend', `<span class="dot">${openComplaintsCount}</span>`);
+        $('adm-customers')?.classList.toggle('on', cur === 'customers');
+        $('adm-audit')?.classList.toggle('on', ['audit', 'catalog', 'payments', 'complaints', 'notifications'].includes(cur));
+        const pendingV = S.admAnalytics?.pending_provider_verifications || 0;
+        if (pendingV) $('adm-techs')?.insertAdjacentHTML('beforeend', `<span class="dot">${pendingV}</span>`);
       } else if (S.user.role === 'worker') {
         const cur = S.wkTab || 'home';
         navDiv.innerHTML = `

@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS users (
   verification_submitted_at TIMESTAMPTZ,
   service_categories TEXT,
   pricing_json TEXT,
+  account_status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (account_status IN ('active', 'suspended')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT users_worker_skill_check CHECK (role != 'worker' OR skill IS NOT NULL)
 );
@@ -340,6 +341,30 @@ CREATE TABLE IF NOT EXISTS provider_job_rejections (
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (booking_id, worker_id)
 );
+
+CREATE TABLE IF NOT EXISTS refunds (
+  id SERIAL PRIMARY KEY,
+  booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  complaint_id INTEGER REFERENCES complaints(id) ON DELETE SET NULL,
+  amount INTEGER NOT NULL CHECK (amount > 0),
+  reason VARCHAR(300) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'processed' CHECK (status IN ('pending', 'processed', 'failed')),
+  processed_by_admin_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS refunds_user_idx ON refunds(user_id, id DESC);
+
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
+  id SERIAL PRIMARY KEY,
+  admin_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  action VARCHAR(80) NOT NULL,
+  target_type VARCHAR(50) NOT NULL,
+  target_id INTEGER,
+  details_json TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS audit_logs_created_idx ON admin_audit_logs(id DESC);
 `;
 
 function getPoolConfig(customConfig = {}) {
@@ -405,6 +430,7 @@ function openMemoryDb() {
       verification_submitted_at TEXT,
       service_categories TEXT,
       pricing_json TEXT,
+      account_status TEXT NOT NULL DEFAULT 'active' CHECK (account_status IN ('active', 'suspended')),
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CHECK (role != 'worker' OR skill IS NOT NULL)
     );
@@ -516,6 +542,7 @@ function openMemoryDb() {
       rating REAL NOT NULL CHECK (rating >= 1 AND rating <= 5),
       comment TEXT,
       photos TEXT,
+      is_hidden INTEGER NOT NULL DEFAULT 0 CHECK (is_hidden IN (0, 1)),
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE booking_status_history (
@@ -663,10 +690,33 @@ function openMemoryDb() {
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE (booking_id, worker_id)
     );
+    CREATE TABLE refunds (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      complaint_id INTEGER REFERENCES complaints(id) ON DELETE SET NULL,
+      amount INTEGER NOT NULL CHECK (amount > 0),
+      reason TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'processed' CHECK (status IN ('pending', 'processed', 'failed')),
+      processed_by_admin_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE admin_audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      admin_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      action TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id INTEGER,
+      details_json TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   const seed = sqlite.prepare('INSERT OR IGNORE INTO services (id, cat, name, price, rating) VALUES (?, ?, ?, ?, ?)');
   SERVICES.forEach((service, index) => seed.run(index + 1, ...service));
+
+  const seedCat = sqlite.prepare('INSERT OR IGNORE INTO categories (id, name, slug, icon, description, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
+  CATEGORIES.forEach((cat, idx) => seedCat.run(idx + 1, cat, cat.toLowerCase().replace(/[^a-z0-9]+/g, '-'), 'tool', `${cat} services`, idx + 1));
 
   const seedAmc = sqlite.prepare('INSERT OR IGNORE INTO amc_plans (id, name, category, validity_months, price, visits_included, inclusions, exclusions) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
   DEFAULT_AMC_PLANS.forEach((p, idx) => seedAmc.run(idx + 1, ...p));
@@ -851,7 +901,9 @@ function openDb(config = {}) {
             ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_submitted_at TIMESTAMPTZ;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS service_categories TEXT;
             ALTER TABLE users ADD COLUMN IF NOT EXISTS pricing_json TEXT;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status VARCHAR(20) NOT NULL DEFAULT 'active';
             ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+            ALTER TABLE reviews ADD COLUMN IF NOT EXISTS is_hidden SMALLINT NOT NULL DEFAULT 0;
 
             ALTER TABLE services ADD COLUMN IF NOT EXISTS description TEXT;
             ALTER TABLE services ADD COLUMN IF NOT EXISTS duration_minutes INTEGER DEFAULT 60;
@@ -929,6 +981,17 @@ function openDb(config = {}) {
                 `INSERT INTO service_areas (pincode, city, area_name)
                  VALUES ($1, $2, $3) ON CONFLICT (pincode) DO NOTHING`,
                 a
+              );
+            }
+          }
+          const catCnt = await this.queryOne('SELECT COUNT(*) AS c FROM categories');
+          if (Number(catCnt.c) === 0) {
+            for (let i = 0; i < CATEGORIES.length; i++) {
+              const cat = CATEGORIES[i];
+              await this.query(
+                `INSERT INTO categories (name, slug, icon, description, sort_order)
+                 VALUES ($1, $2, 'tool', $3, $4) ON CONFLICT (name) DO NOTHING`,
+                [cat, cat.toLowerCase().replace(/[^a-z0-9]+/g, '-'), `${cat} services`, i + 1]
               );
             }
           }
