@@ -172,7 +172,7 @@ let S = {
   walletTxHistory: [],
   pfTab: 'account',
   user: null,
-  lg: { step: 0, ph: '', otp: '', tries: 0, exp: 0, rs: 0 }
+  lg: { step: 0, ph: '', otp: '', tries: 0, exp: 0, rs: 0, intendedRole: 'customer' }
 };
 
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -304,8 +304,14 @@ function finishOnboarding() {
    ======================================================== */
 const mk = (p) => p.slice(0, 2) + 'XXXXXX' + p.slice(-2);
 
+function setLoginRole(role) {
+  S.lg.intendedRole = role === 'worker' ? 'worker' : 'customer';
+  render();
+}
+
 function login() {
   const L = S.lg;
+  const roleChoice = L.intendedRole === 'worker' ? 'worker' : 'customer';
   if (L.step === 0) {
     return `<div class="hd hero">
       <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
@@ -313,16 +319,30 @@ function login() {
       </div>
       <div style="display:flex;justify-content:center">${fmLogo({ size: 52, onDark: true })}</div>
       <div class="brand-badge">${ic('shieldCheck', 14)} 100% Trusted Home Services</div>
-      <div style="margin-top:6px;font-size:14px;opacity:0.92;max-width:360px;margin-left:auto;margin-right:auto">Ghar ke kaam, verified professionals se. Shuru karne ke liye mobile number se login karein.</div>
+      <div style="margin-top:6px;font-size:14px;opacity:0.92;max-width:380px;margin-left:auto;margin-right:auto">Apni zarurat chunein — ghar ki service book karein ya Service Provider ban kar kaam karein.</div>
     </div>
     <div class="auth-card">
-      <h2 style="margin-top:0">Mobile Number</h2>
+      <div style="font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">Select Your Panel</div>
+      <div class="auth-role-grid" role="radiogroup" aria-label="Choose account type">
+        <button type="button" class="auth-role-card ${roleChoice === 'customer' ? 'on' : ''}" onclick="setLoginRole('customer')">
+          <span class="auth-role-ico">${ic('home', 22)}</span>
+          <b>Customer Panel</b>
+          <span>Mujhe Service Chahiye</span>
+        </button>
+        <button type="button" class="auth-role-card ${roleChoice === 'worker' ? 'on' : ''}" onclick="setLoginRole('worker')">
+          <span class="auth-role-ico">${ic('tool', 22)}</span>
+          <b>Service Provider</b>
+          <span>Mujhe Kaam Karna Hai</span>
+        </button>
+      </div>
+
+      <h2 style="margin-top:16px">${roleChoice === 'worker' ? 'Partner Mobile Login' : 'Customer Mobile Login'}</h2>
       <div class="row">
         <span class="badge" style="padding:13px 14px;font-size:14px">+91</span>
         <input id="ph" type="tel" inputmode="numeric" maxlength="10" placeholder="10 digit mobile number" value="${esc(L.ph)}" style="margin:0">
       </div>
       <div class="mut" style="margin:10px 0 16px;display:flex;align-items:center;gap:6px">${ic('lock', 14)} Hum OTP bhejenge. Aapka number bilkul surakshit rahega.</div>
-      <button class="btn acc" onclick="sendOtp()">${ic('send', 16)} OTP Bhejo</button>
+      <button class="btn acc" onclick="sendOtp()">${ic('send', 16)} ${roleChoice === 'worker' ? 'Provider Login (OTP Bhejo)' : 'Customer Login (OTP Bhejo)'}</button>
       <div style="text-align:center;margin-top:16px">
         <button class="btn sm ghost" style="display:inline-flex;width:auto;padding:6px 14px;font-size:12px" onclick="setCustomServerUrl()" title="Configure API server endpoint">${ic('settings', 14)} Server: ${esc(getServerStatusLabel())}</button>
       </div>
@@ -333,6 +353,7 @@ function login() {
     const cd = (L.cooldown || 0) > 0;
     return `<button class="back" onclick="S.lg.step=0;render()">${ic('arrowLeft', 16)} Number badlo</button>
     <div class="auth-card">
+      <div class="badge" style="margin-bottom:8px">${ic(roleChoice === 'worker' ? 'tool' : 'user', 13)} ${roleChoice === 'worker' ? 'Service Provider Login' : 'Customer Login'}</div>
       <h2 style="font-size:22px;margin-top:0">OTP Verification</h2>
       <div class="mut">+91 ${mk(L.ph)} pe 6 digit OTP bheja gaya hai.</div>
       <div class="fm-alert info" style="margin-top:14px">${ic('key', 16)} <div>${L.dev ? `Demo OTP: <b style="color:var(--pri);font-size:17px">${esc(L.dev)}</b>` : 'OTP aapke mobile par SMS ke zariye bheja gaya hai.'}</div></div>
@@ -344,15 +365,20 @@ function login() {
 
   return `<div class="auth-card" style="margin-top:20px">
   <div class="badge ok" style="margin-bottom:10px">${ic('checkCircle', 14)} Mobile Verified</div>
-  <h2 style="font-size:22px;margin-top:0">Complete Your Profile</h2>
-  <div class="mut" style="margin-bottom:14px">Bas ek step baaki hai apna FixMate account shuru karne ke liye.</div>
+  <h2 style="font-size:22px;margin-top:0">${roleChoice === 'worker' ? 'Service Provider Registration' : 'Customer Account Setup'}</h2>
+  <div class="mut" style="margin-bottom:14px">Bas ek step baaki hai apna FixMate ${roleChoice === 'worker' ? 'Partner' : 'Customer'} account shuru karne ke liye.</div>
   <label for="nm" style="font-weight:700;font-size:13.5px">Aapka Poora Naam</label>
-  <input id="nm" placeholder="Full name" style="margin-top:6px">
-  <label for="sk" style="font-weight:700;font-size:13.5px">Service Provider ho to apna kaam chuno</label>
-  <select id="sk" style="margin-top:6px">${CATS.map((c) => `<option>${c}</option>`).join('')}</select>
-  <button class="btn acc" onclick="fin2('customer')">${ic('user', 16)} Customer Account Shuru Karein</button>
-  <button class="btn ghost" style="margin-top:10px" onclick="fin2('worker')">${ic('tool', 16)} Service Provider Ban Kar Kaam Lein</button>
-  <div class="mut" style="margin-top:12px;display:flex;align-items:center;gap:6px;font-size:12px">${ic('shield', 14)} Provider ki ID aur verification ke baad hi requests milengi.</div>
+  <input id="nm" placeholder="Full name" style="margin-top:6px;margin-bottom:12px">
+  ${roleChoice === 'worker' ? `
+    <label for="sk" style="font-weight:700;font-size:13.5px">Apna Kaam / Primary Skill Chunein</label>
+    <select id="sk" style="margin-top:6px;margin-bottom:14px">${CATS.map((c) => `<option>${c}</option>`).join('')}</select>
+    <button class="btn acc" onclick="fin2('worker')">${ic('tool', 16)} Service Provider Account Shuru Karein</button>
+    <button class="btn ghost" style="margin-top:10px" onclick="setLoginRole('customer')">${ic('user', 16)} Mujhe Service Chahiye (Customer Bano)</button>
+    <div class="mut" style="margin-top:12px;display:flex;align-items:center;gap:6px;font-size:12px">${ic('shield', 14)} Provider ki ID aur verification ke baad hi requests milengi.</div>
+  ` : `
+    <button class="btn acc" onclick="fin2('customer')">${ic('user', 16)} Customer Account Shuru Karein</button>
+    <button class="btn ghost" style="margin-top:10px" onclick="setLoginRole('worker')">${ic('tool', 16)} Service Provider Ban Kar Kaam Lein</button>
+  `}
   </div>`;
 }
 
@@ -436,6 +462,7 @@ function fin2(role) {
 }
 
 async function signedIn(d) {
+  const chosenRole = S.lg?.intendedRole;
   S.token = d.token;
   S.user = d.user;
   try { localStorage.setItem('fm_auth', JSON.stringify({ t: d.token, u: d.user })); } catch (e) {}
@@ -443,7 +470,11 @@ async function signedIn(d) {
   await refresh();
   render();
   scrollTo(0, 0);
-  toast('Welcome, ' + d.user.name);
+  if (d.user.role !== 'admin' && chosenRole && chosenRole !== d.user.role) {
+    toast(`Welcome ${d.user.name}! Aapka account ${d.user.role === 'worker' ? 'Service Provider' : 'Customer'} se registered hai.`);
+  } else {
+    toast('Welcome, ' + d.user.name);
+  }
 }
 
 function out() {
@@ -451,7 +482,7 @@ function out() {
   S.user = null;
   S.token = null;
   S.B = [];
-  S.lg = { step: 0, ph: '', cooldown: 0 };
+  S.lg = { step: 0, ph: '', cooldown: 0, intendedRole: 'customer' };
   try { localStorage.removeItem('fm_auth'); } catch (e) {}
   S.scr = 'login';
   render();

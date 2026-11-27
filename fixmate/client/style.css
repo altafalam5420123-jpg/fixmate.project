@@ -2678,3 +2678,54 @@ h2 {
   font-weight: 700;
   color: var(--ink);
 }
+
+/* Front Page Role Selector Cards */
+.auth-role-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.auth-role-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1.5px solid var(--bd);
+  background: var(--soft);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.auth-role-card b {
+  font-size: 13.5px;
+  color: var(--ink);
+}
+.auth-role-card span {
+  font-size: 11.5px;
+  color: var(--mut);
+  line-height: 1.3;
+}
+.auth-role-ico {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--pri);
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+  border: 1px solid var(--bd);
+}
+.auth-role-card.on {
+  border-color: var(--pri);
+  background: var(--pri-soft);
+  box-shadow: 0 4px 14px rgba(22, 119, 232, 0.14);
+}
+.auth-role-card.on .auth-role-ico {
+  background: var(--pri);
+  color: #FFFFFF;
+  border-color: var(--pri);
+}
