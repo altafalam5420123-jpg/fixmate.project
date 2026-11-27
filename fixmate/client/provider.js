@@ -316,11 +316,12 @@
         <div class="card" style="background:${S.wkSharingBookingId === b.id || b.tracking_active ? 'var(--ok-soft)' : 'var(--soft)'};border-color:${S.wkSharingBookingId === b.id || b.tracking_active ? 'var(--ok)' : 'var(--bd)'};padding:10px 12px;margin-bottom:10px">
           <div class="row">
             <div style="font-size:12px">
-              <b style="display:flex;align-items:center;gap:6px">${ic('radio', 15)} ${S.wkSharingBookingId === b.id || b.tracking_active ? 'Live Location Sharing Active' : 'Share Live Location'}</b>
-              <div class="mut" style="font-size:11px">Consent-based GPS sharing sirf is active job ke liye.</div>
+              <b style="display:flex;align-items:center;gap:6px">${ic('radio', 15)} ${S.wkSharingBookingId === b.id || b.tracking_active ? t('prov.gps_active_title') : t('prov.share_gps')}</b>
+              <div class="mut" style="font-size:11px">${t('prov.gps_consent_note')}</div>
+              ${b.tracking_active && b.eta_minutes ? `<div style="font-size:11px;font-weight:700;color:var(--ok);margin-top:2px">ETA: ~${b.eta_minutes} min</div>` : ''}
             </div>
             <button class="btn sm ${S.wkSharingBookingId === b.id ? 'ghost' : 'acc'}" style="width:auto;padding:6px 12px;font-size:11.5px" onclick="toggleWorkerLocationSharing(${b.id})">
-              ${S.wkSharingBookingId === b.id ? `${ic('stopCircle', 14)} Stop GPS` : `${ic('locate', 14)} Share GPS`}
+              ${S.wkSharingBookingId === b.id ? `${ic('stopCircle', 14)} ${t('prov.stop_gps')}` : `${ic('locate', 14)} ${t('prov.share_gps')}`}
             </button>
           </div>
         </div>

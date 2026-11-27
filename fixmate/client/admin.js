@@ -316,6 +316,9 @@
             ${!['completed', 'closed', 'cancelled'].includes(b.status) ? `
               <button class="btn sm acc" style="width:auto" onclick="openAdminAssignModal(${b.id})">${ic('userCheck', 14)} ${b.worker_name ? 'Reassign' : 'Assign'}</button>
             ` : ''}
+            ${['assigned', 'on_the_way', 'inspecting', 'quoted', 'in_progress'].includes(b.status) ? `
+              <button class="btn sm ghost" style="width:auto" onclick="openTrackingModal(${b.id})">${ic('map', 14)} Track Live</button>
+            ` : ''}
             <button class="btn sm ghost" style="width:auto" onclick="openAdminBookingHistory(${b.id})">${ic('clock', 14)} History</button>
             <button class="btn sm ghost" style="width:auto" onclick="openInvoiceModal(${b.id})">${ic('fileText', 14)} Invoice</button>
             ${!['completed', 'closed', 'cancelled'].includes(b.status) ? `

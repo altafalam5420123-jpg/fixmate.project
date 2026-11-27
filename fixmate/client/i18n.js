@@ -80,10 +80,22 @@
       'val.name': 'Please enter your name (at least 2 characters)',
       'val.address': 'Please enter your service address',
       'val.slot': 'Please choose a booking time slot',
+      'val.location_confirm': 'Please confirm your location pin on the map (tap map, use GPS, or tick Confirmed)',
       'val.password_len': 'Password must be at least 8 characters long',
       'val.lang_saved': 'Language updated to English',
       'val.profile_saved': 'Profile saved successfully',
       'val.password_saved': 'Password updated successfully',
+
+      'cust.find_address_map': 'Find on Map',
+      'cust.pin_help': 'Tap anywhere on the map, drag pin, or click Use My GPS to pin exact location',
+      'cust.pinned_coords': 'Pinned',
+      'track.title': 'Live Technician Tracking',
+      'track.live_active': 'Live GPS Active',
+      'track.pending_msg': 'Location Permission Pending: Live map updates once the provider grants GPS sharing consent.',
+      'track.privacy_msg': 'Privacy Notice: Provider live coordinates are visible only during an active booking.',
+      'track.status_timeline': 'Booking Status Timeline',
+      'prov.gps_active_title': 'Live Location Sharing Active',
+      'prov.gps_consent_note': 'Consent-based GPS sharing: active only for this job and auto-stops on completion.',
 
       // Customer App
       'cust.search_ph': 'Which service do you need? (e.g. AC, Tap, Fan)',
@@ -407,7 +419,19 @@
       'status.pending': 'लंबित',
       'status.approved': 'स्वीकृत',
       'status.rejected': 'अस्वीकृत',
-      'status.suspended': 'निलंबित'
+      'status.suspended': 'निलंबित',
+
+      'val.location_confirm': 'बुकिंग से पहले कृपया मैप पर अपनी लोकेशन पिन की पुष्टि करें (मैप टैप करें, GPS उपयोग करें या कन्फर्म टिक करें)',
+      'cust.find_address_map': 'मैप पर खोजें',
+      'cust.pin_help': 'सटीक स्थान के लिए मैप पर टैप करें, पिन खींचें या Use My GPS दबाएं',
+      'cust.pinned_coords': 'पिन किया गया',
+      'track.title': 'लाइव तकनीशियन ट्रैकिंग',
+      'track.live_active': 'लाइव GPS सक्रिय',
+      'track.pending_msg': 'लोकेशन अनुमति लंबित: प्रोवाइडर द्वारा GPS सहमति देने पर लाइव मैप अपडेट होगा।',
+      'track.privacy_msg': 'गोपनीयता सूचना: प्रोवाइडर की लाइव लोकेशन केवल सक्रिय बुकिंग के दौरान दिखती है।',
+      'track.status_timeline': 'बुकिंग स्टेटस टाइमलाइन',
+      'prov.gps_active_title': 'लाइव लोकेशन शेयरिंग सक्रिय है',
+      'prov.gps_consent_note': 'सहमति-आधारित GPS शेयरिंग: केवल इस सक्रिय बुकिंग के लिए लागू और पूर्ण होने पर स्वतः बंद।'
     },
 
     hinglish: {
@@ -605,7 +629,19 @@
       'status.pending': 'Pending',
       'status.approved': 'Approved',
       'status.rejected': 'Rejected',
-      'status.suspended': 'Suspended'
+      'status.suspended': 'Suspended',
+
+      'val.location_confirm': 'Booking se pehle map par apni location pin confirm karein (map tap karein, GPS use karein ya Confirmed tick karein)',
+      'cust.find_address_map': 'Map par Dekhein',
+      'cust.pin_help': 'Exact location ke liye map par tap karein, pin drag karein ya Use My GPS dabayein',
+      'cust.pinned_coords': 'Pinned',
+      'track.title': 'Live Technician Tracking',
+      'track.live_active': 'Live GPS Active',
+      'track.pending_msg': 'Location Permission Pending: Jab provider GPS consent dega tab live map update hoga.',
+      'track.privacy_msg': 'Privacy Notice: Provider live location sirf active booking ke time dikhti hai.',
+      'track.status_timeline': 'Booking Status Timeline',
+      'prov.gps_active_title': 'Live Location Sharing Active',
+      'prov.gps_consent_note': 'Consent-based GPS sharing: Sirf is active booking ke liye share hoga aur complete hone par auto-stop hoga.'
     }
   };
 

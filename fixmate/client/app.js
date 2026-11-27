@@ -2102,8 +2102,8 @@ function renderModal() {
       <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:92vh;overflow-y:auto">
         <div class="modal-header">
           <div>
-            <h3 style="margin:0;font-size:18px">${ic('map', 18)} Live Technician Tracking</h3>
-            <div class="mut" style="font-size:12px;margin-top:2px">Booking #${tr.booking_id} · ${esc(tr.status_label)}</div>
+            <h3 style="margin:0;font-size:18px">${ic('map', 18)} ${t('track.title')}</h3>
+            <div class="mut" style="font-size:12px;margin-top:2px">Booking #${tr.booking_id} · ${esc(trStatus(tr.status) || tr.status_label)}</div>
           </div>
           <button class="modal-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
         </div>
@@ -2112,7 +2112,7 @@ function renderModal() {
           <div class="card" style="background:var(--ok-soft);border-color:var(--ok);padding:10px 12px;margin-bottom:12px">
             <div class="row">
               <div>
-                <b style="color:var(--ok);font-size:14px;display:flex;align-items:center;gap:6px">${ic('radio', 15)} Live GPS Active</b>
+                <b style="color:var(--ok);font-size:14px;display:flex;align-items:center;gap:6px">${ic('radio', 15)} ${t('track.live_active')}</b>
                 <div class="mut" style="font-size:11.5px">Updated: ${new Date(wLoc.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
               </div>
               <div style="text-align:right">
@@ -2125,9 +2125,7 @@ function renderModal() {
           <div class="fm-alert info" style="margin-bottom:12px">
             ${ic(tr.is_active_job ? 'clock' : 'lock', 16)}
             <div>
-              ${tr.is_active_job
-                ? '<b>Location Permission Pending:</b> Technician ne abhi GPS sharing on nahi ki hai. Jab wo "Share GPS" chalu karenge tab live map update hoga.'
-                : '<b>Privacy Notice:</b> Technician location sirf active booking ke dauran hi visible hoti hai.'}
+              ${tr.is_active_job ? t('track.pending_msg') : t('track.privacy_msg')}
             </div>
           </div>
         `}
@@ -2138,25 +2136,25 @@ function renderModal() {
           <div class="card row" style="margin-top:12px;padding:10px 12px">
             <div>
               <b>${esc(tr.technician.name)}</b> ${tr.technician.verified ? `<span class="badge ok" style="font-size:10px">${ic('shieldCheck', 11)} Verified</span>` : ''}
-              <div class="mut" style="font-size:11.5px">${esc(tr.technician.skill)} · ${esc(cLoc?.address || 'Dhanbad')}</div>
+              <div class="mut" style="font-size:11.5px">${esc(tr.technician.skill)} · ${esc(cLoc?.address || '')}</div>
             </div>
             ${tr.technician.contact_phone ? `<a href="tel:${esc(tr.technician.contact_phone)}" class="btn sm acc" style="width:auto;padding:6px 12px;text-decoration:none">${ic('phone', 14)} Call</a>` : ''}
           </div>
         ` : ''}
 
         ${tl.length ? `
-          <div style="font-weight:700;font-size:13px;margin:12px 0 6px">Live Status Updates</div>
+          <div style="font-weight:700;font-size:13px;margin:12px 0 6px">${t('track.status_timeline')}</div>
           <div class="card" style="padding:10px 12px;font-size:12px">
             ${tl.map((step) => `
               <div class="row" style="padding:5px 0;border-bottom:1px dashed var(--bd)">
-                <span style="display:flex;align-items:center;gap:6px">${ic('checkCircle', 13)} <b>${esc(step.new_status.replace(/_/g, ' '))}</b> ${step.notes ? `— ${esc(step.notes)}` : ''}</span>
+                <span style="display:flex;align-items:center;gap:6px">${ic('checkCircle', 13)} <b>${esc(trStatus(step.new_status) || step.new_status.replace(/_/g, ' '))}</b> ${step.notes ? `— ${esc(step.notes)}` : ''}</span>
                 <span class="mut" style="font-size:11px">${new Date(step.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
             `).join('')}
           </div>
         ` : ''}
 
-        <button class="btn ghost" style="margin-top:12px" onclick="closeModal()">Band Karein</button>
+        <button class="btn ghost" style="margin-top:12px" onclick="closeModal()">${t('common.close')}</button>
       </div>
     </div>`;
   }
@@ -2585,19 +2583,20 @@ function downloadPdfInvoice(bookingId) {
    ======================================================== */
 function captureCustomerGps() {
   if (!navigator.geolocation) {
-    toast('Aapka browser GPS location support nahi karta');
+    toast('GPS location is not supported in this browser');
     return;
   }
-  toast('Aapka exact map pin capture ho raha hai...');
+  toast('Capturing your GPS location pin...');
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       S.customerLat = Number(pos.coords.latitude.toFixed(6));
       S.customerLng = Number(pos.coords.longitude.toFixed(6));
+      S.bkMapConfirmed = true;
       render();
-      toast('GPS map pin save ho gaya!');
+      toast('GPS location pin saved and confirmed!');
     },
     (err) => {
-      toast(err.code === 1 ? 'Location permission allow karein browser mein' : 'GPS location fetch nahi ho saki');
+      toast(err.code === 1 ? 'Please allow Location permission in your browser' : 'Could not fetch GPS location. Tap the map to pin.');
     },
     { enableHighAccuracy: true, timeout: 10000 }
   );
@@ -2619,26 +2618,32 @@ async function toggleWorkerLocationSharing(bookingId) {
       await refresh();
     } catch (e) {}
     render();
-    toast('Live GPS location sharing band kar di gayi');
+    toast('Live GPS location sharing stopped');
     return;
   }
 
   if (!navigator.geolocation) {
-    toast('Is device mein GPS geolocation available nahi hai');
+    toast('GPS geolocation is not available on this device');
     return;
   }
 
-  stopWorkerGpsWatch();
-  toast('GPS permission check ki ja rahi hai...');
+  const agreed = window.confirm('Share your live GPS location with this customer and FixMate admin while this booking is active? Tracking automatically stops when the job finishes.');
+  if (!agreed) return;
 
+  stopWorkerGpsWatch();
+  toast('Checking device GPS permission...');
+
+  let firstPush = true;
   const sendCoords = async (pos) => {
     try {
       await api('POST', `/bookings/${bookingId}/location`, {
         lat: pos.coords.latitude,
-        lng: pos.coords.longitude
+        lng: pos.coords.longitude,
+        consent_granted: firstPush
       });
+      firstPush = false;
     } catch (e) {
-      if (e.message && /sirf active job/i.test(e.message)) {
+      if (e.message && (/active job/i.test(e.message) || /sirf active/i.test(e.message))) {
         stopWorkerGpsWatch();
         render();
       }
@@ -2651,7 +2656,7 @@ async function toggleWorkerLocationSharing(bookingId) {
       await sendCoords(pos);
       await refresh();
       render();
-      toast('Live GPS Sharing chalu! Customer ko ETA dikhega.');
+      toast('Live GPS Sharing Active! Customer & Admin can track arrival ETA.');
 
       S.wkWatchId = navigator.geolocation.watchPosition(
         sendCoords,
@@ -2661,8 +2666,8 @@ async function toggleWorkerLocationSharing(bookingId) {
     },
     (err) => {
       toast(err.code === 1
-        ? 'Location permission denied! Browser address bar se Location Allow karein.'
-        : 'GPS signal nahi mila. Location ON karein.');
+        ? 'Location permission denied! Allow Location access in browser settings.'
+        : 'GPS signal unavailable. Please enable device location.');
     },
     { enableHighAccuracy: true, timeout: 10000 }
   );

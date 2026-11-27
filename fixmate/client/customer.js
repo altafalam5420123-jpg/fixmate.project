@@ -543,6 +543,30 @@
   let bookingMapInstance = null;
   let bookingMapMarker = null;
 
+  window.locateAddressOnMap = async function () {
+    const query = (S.ad || '').trim();
+    if (query.length < 4) {
+      toast(t('val.address'));
+      return;
+    }
+    toast('Searching address on map...');
+    try {
+      const resp = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(query));
+      const rows = await resp.json();
+      if (Array.isArray(rows) && rows[0] && rows[0].lat && rows[0].lon) {
+        S.customerLat = Number(Number(rows[0].lat).toFixed(6));
+        S.customerLng = Number(Number(rows[0].lon).toFixed(6));
+        S.bkMapConfirmed = true;
+        render();
+        toast('Address pinned on map! Drag marker if needed.');
+        return;
+      }
+      toast('Exact address not found on map. Please tap the map or use GPS.');
+    } catch (e) {
+      toast('Map search unavailable. Tap anywhere on the map or use GPS.');
+    }
+  };
+
   window.afterCustomerRender = function () {
     if (S.scr === 'book') {
       initBookingMapPicker();
@@ -700,21 +724,24 @@
         <button class="chip" onclick="openAddAddressModal()">${ic('plus', 13)} Naya Address</button>
       </div>
     ` : ''}
-    <input id="ad" placeholder="House / Flat no, street, landmark, city" value="${esc(S.ad)}" oninput="S.ad=this.value">
+    <input id="ad" placeholder="House / Flat no, street, landmark, city" value="${esc(S.ad)}" oninput="S.ad=this.value;S.bkMapConfirmed=false">
 
     <div class="card" style="padding:12px;margin-bottom:14px">
-      <div class="row" style="margin-bottom:8px">
-        <b style="font-size:13px;display:flex;align-items:center;gap:6px">${ic('map', 15)} Confirm Location Pin on Map</b>
-        <button class="btn sm ghost" style="padding:5px 10px;font-size:11.5px" onclick="captureCustomerGps()">${ic('locate', 13)} Use My GPS</button>
+      <div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px">
+        <b style="font-size:13px;display:flex;align-items:center;gap:6px">${ic('map', 15)} ${t('cust.map_pin_title')}</b>
+        <div class="row" style="gap:6px">
+          <button class="btn sm ghost" style="width:auto;padding:5px 10px;font-size:11.5px" onclick="locateAddressOnMap()">${ic('search', 13)} ${t('cust.find_address_map')}</button>
+          <button class="btn sm ghost" style="width:auto;padding:5px 10px;font-size:11.5px" onclick="captureCustomerGps()">${ic('locate', 13)} ${t('cust.use_gps')}</button>
+        </div>
       </div>
       <div id="booking-map-picker" class="live-map-box" style="height:185px"></div>
       <div class="row" style="margin-top:8px">
         <span id="bk-coord-label" class="mut" style="font-size:11.5px">
-          ${S.customerLat ? `Pinned: ${S.customerLat.toFixed(4)}, ${S.customerLng.toFixed(4)}` : 'Tap anywhere on the map or click "Use My GPS" to pin exact location'}
+          ${S.customerLat ? `${t('cust.pinned_coords')}: ${S.customerLat.toFixed(4)}, ${S.customerLng.toFixed(4)}` : t('cust.pin_help')}
         </span>
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;cursor:pointer">
           <input type="checkbox" style="width:auto;margin:0" ${S.bkMapConfirmed ? 'checked' : ''} onchange="S.bkMapConfirmed=this.checked">
-          Confirmed
+          ${t('cust.confirmed_pin')}
         </label>
       </div>
     </div>
@@ -776,6 +803,14 @@
   window.doBook = function () {
     if (!S.ad.trim()) {
       toast(t('val.address'));
+      return;
+    }
+    if (!S.bkMapConfirmed) {
+      toast(t('val.location_confirm'));
+      const mapEl = $('booking-map-picker');
+      if (mapEl && typeof mapEl.scrollIntoView === 'function') {
+        mapEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
       return;
     }
     if (!S.bkSelectedTime && !(SL[S.slot])) {

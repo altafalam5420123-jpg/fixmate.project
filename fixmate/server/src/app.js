@@ -1138,6 +1138,41 @@ function createApp(db = openDb()) {
   };
   const ACTIVE_TRACKING_STATUSES = ['assigned', 'on_the_way', 'inspecting', 'quoted', 'in_progress'];
 
+  const isProviderAvailableForDate = async (workerId, dateStr) => {
+    if (!workerId || !dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr).trim())) {
+      return { available: true, reason: null };
+    }
+    try {
+      const dow = new Date(`${String(dateStr).trim()}T00:00:00Z`).getUTCDay();
+      const availRow = await db.queryOne(
+        'SELECT is_available, start_time, end_time FROM provider_availability WHERE provider_id = $1 AND day_of_week = $2',
+        [Number(workerId), dow]
+      );
+      if (availRow && Number(availRow.is_available) === 0) {
+        return { available: false, reason: 'Provider marked unavailable on selected date' };
+      }
+      return { available: true, reason: null, window: availRow || null };
+    } catch {
+      return { available: true, reason: null };
+    }
+  };
+
+  const notifyAdmins = async ({ bookingId = null, title, body, type = 'admin_alert', dedupePrefix = null }) => {
+    try {
+      const adminsRes = await db.query("SELECT id FROM users WHERE role = 'admin' AND COALESCE(account_status, 'active') = 'active'");
+      for (const adm of (adminsRes.rows || [])) {
+        await notifyUser({
+          userId: adm.id,
+          bookingId,
+          title,
+          body,
+          type,
+          dedupeKey: dedupePrefix ? `${dedupePrefix}_u${adm.id}` : null
+        });
+      }
+    } catch {}
+  };
+
   const calcDistanceAndEta = (lat1, lng1, lat2, lng2) => {
     if (lat1 == null || lng1 == null || lat2 == null || lng2 == null) {
       return { distance_km: null, eta_minutes: null };
@@ -1244,7 +1279,7 @@ function createApp(db = openDb()) {
     cancelled: ['Booking Cancelled', 'Aapki booking cancel kar di gayi hai.']
   };
 
-  const move = async (b, from, to, setFields = {}, actorId = null) => {
+  const move = async (b, from, to, setFields = {}, actorId = null, notes = null) => {
     const mergedFields = { ...setFields };
     // Immediately wipe & stop technician GPS coordinates whenever booking leaves active tracking phase
     if (['completed', 'closed', 'cancelled'].includes(to)) {
@@ -1252,6 +1287,7 @@ function createApp(db = openDb()) {
       mergedFields.worker_lng = null;
       mergedFields.tracking_active = 0;
       mergedFields.eta_minutes = null;
+      mergedFields.location_updated_at = null;
     }
 
     const fields = ['status = $1'];
@@ -1269,8 +1305,8 @@ function createApp(db = openDb()) {
     if (r.rowCount !== 1) bad(409, `Abhi ye action possible nahi (status: ${b.status})`);
     try {
       await db.query(
-        'INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by_user_id) VALUES ($1, $2, $3, $4)',
-        [b.id, from, to, actorId]
+        'INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by_user_id, notes) VALUES ($1, $2, $3, $4, $5)',
+        [b.id, from, to, actorId, notes]
       );
     } catch {
       // audit history failsafe
@@ -1291,6 +1327,34 @@ function createApp(db = openDb()) {
         body: nBody,
         type: 'booking_status',
         dedupeKey: `booking_${b.id}_${to}`
+      });
+    }
+
+    const assignedWorkerId = mergedFields.worker_id || b.worker_id;
+    if (assignedWorkerId && ['in_progress', 'closed', 'cancelled'].includes(to) && actorId !== assignedWorkerId) {
+      const wMsgMap = {
+        in_progress: ['Quote Approved', `Customer ne Booking #${b.id} ka quote approve kar diya hai.`],
+        closed: ['Quote Rejected', `Customer ne Booking #${b.id} ka quote reject kiya.`],
+        cancelled: ['Booking Cancelled', `Booking #${b.id} cancel ho gayi hai.`]
+      };
+      const [wt, wb] = wMsgMap[to];
+      await notifyUser({
+        userId: assignedWorkerId,
+        bookingId: b.id,
+        title: `${wt} (#${b.id})`,
+        body: wb,
+        type: 'booking_status',
+        dedupeKey: `booking_${b.id}_worker_${to}`
+      });
+    }
+
+    if (['assigned', 'completed', 'cancelled'].includes(to)) {
+      await notifyAdmins({
+        bookingId: b.id,
+        title: `Booking #${b.id} -> ${to.replace(/_/g, ' ').toUpperCase()}`,
+        body: `Booking #${b.id} (${b.service || 'Service'}) ka status ab '${to}' hai.`,
+        type: 'admin_booking_update',
+        dedupePrefix: `adm_b${b.id}_${to}`
       });
     }
   };
@@ -1314,14 +1378,38 @@ function createApp(db = openDb()) {
     if (!['wallet', 'cash', 'razorpay'].includes(pay)) bad(400, 'Payment wallet, cash ya online hona chahiye');
 
     let validPreferredWorkerId = null;
+    let preferredWorkerName = null;
     if (preferred_worker_id) {
       const pw = await db.queryOne(
-        "SELECT id, skill, COALESCE(id_verified, 1) AS id_verified FROM users WHERE id = $1 AND role = 'worker'",
+        "SELECT * FROM users WHERE id = $1 AND role = 'worker'",
         [Number(preferred_worker_id)]
       );
-      if (!pw || !pw.id_verified) bad(400, 'Selected provider verified nahi hai');
-      if (pw.skill !== s.cat) bad(400, `Selected provider ${s.cat} category mein nahi hai`);
+      if (!pw || !isProviderApproved(pw) || pw.account_status === 'suspended') {
+        bad(400, 'Selected provider verified nahi hai');
+      }
+      if (!getProviderCategories(pw).includes(s.cat)) {
+        bad(400, `Selected provider ${s.cat} category mein nahi hai`);
+      }
+      if (cleanDate) {
+        const availCheck = await isProviderAvailableForDate(pw.id, cleanDate);
+        if (!availCheck.available) {
+          bad(409, 'Selected provider is date par unavailable hai');
+        }
+      }
+      if (cleanDate && cleanTime) {
+        const slotConflict = await db.queryOne(
+          `SELECT id FROM bookings
+           WHERE (worker_id = $1 OR preferred_worker_id = $1)
+             AND scheduled_date = $2 AND scheduled_time = $3
+             AND status NOT IN ('completed', 'closed', 'cancelled')`,
+          [pw.id, cleanDate, cleanTime]
+        );
+        if (slotConflict) {
+          bad(409, `Selected provider is time slot (${cleanTime}) mein pehle se booked hai`);
+        }
+      }
       validPreferredWorkerId = pw.id;
+      preferredWorkerName = pw.name || null;
     }
 
     // Optional Pincode Serviceability check (Section 21)
@@ -1415,7 +1503,12 @@ function createApp(db = openDb()) {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING id`,
         [req.user.id, validPreferredWorkerId, s.id, resolvedSlot.slice(0, 60), cleanDate, cleanTime, resolvedAddress.slice(0, 200), resolvedFormattedAddr, pay, code, desc, cleanInstructions, photo, validCouponCode, validDiscount, emergency, cLat, cLng, emergencyFee, famName, validAmcSubId]
       );
-      return ins.rows[0].id;
+      const createdId = ins.rows[0].id;
+      await tx.query(
+        'INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by_user_id, notes) VALUES ($1, $2, $3, $4, $5)',
+        [createdId, null, 'requested', req.user.id, preferredWorkerName ? `Booking created (Preferred: ${preferredWorkerName})` : 'Booking created by customer']
+      );
+      return createdId;
     });
 
     await notifyUser({
@@ -1425,6 +1518,23 @@ function createApp(db = openDb()) {
       body: `Aapki service booking confirm ho gayi hai. Safety Code: ${code}.`,
       type: 'booking_status',
       dedupeKey: `booking_${id}_requested`
+    });
+    if (validPreferredWorkerId) {
+      await notifyUser({
+        userId: validPreferredWorkerId,
+        bookingId: id,
+        title: `New Customer Request (#${id})`,
+        body: `${s.name} ke liye naya request (${resolvedSlot.slice(0, 60)}) aaya hai.`,
+        type: 'job_request',
+        dedupeKey: `booking_${id}_pref_w_${validPreferredWorkerId}`
+      });
+    }
+    await notifyAdmins({
+      bookingId: id,
+      title: `New Booking Request (#${id})`,
+      body: `${s.name} · Slot: ${resolvedSlot.slice(0, 50)} · ${resolvedAddress.slice(0, 70)}`,
+      type: 'admin_booking_update',
+      dedupePrefix: `adm_b${id}_new`
     });
     ok(res, { booking: view(await load(id), req.user) }, 201);
   }));
@@ -1469,8 +1579,11 @@ function createApp(db = openDb()) {
     ];
 
     let bookedTimes = new Set();
+    let providerDayBlocked = false;
     const providerId = req.query.provider_id ? Number(req.query.provider_id) : null;
     if (providerId) {
+      const availDay = await isProviderAvailableForDate(providerId, reqDate);
+      if (!availDay.available) providerDayBlocked = true;
       const existing = await db.query(
         `SELECT scheduled_time, slot FROM bookings
          WHERE (worker_id = $1 OR preferred_worker_id = $1)
@@ -1486,8 +1599,8 @@ function createApp(db = openDb()) {
     const slots = baseWindows
       .filter((w) => !w.onlyToday || isToday)
       .map((w) => {
-        let available = !isPastDate;
-        let reason = isPastDate ? 'Past date' : null;
+        let available = !isPastDate && !providerDayBlocked;
+        let reason = isPastDate ? 'Past date' : (providerDayBlocked ? 'Provider unavailable on this day' : null);
         if (available && isToday && !w.onlyToday && currentHour >= w.endHour - 1) {
           available = false;
           reason = 'Time window passed';
@@ -1579,7 +1692,7 @@ function createApp(db = openDb()) {
     const b = await load(req.params.id);
     if (routePath !== 'accept') mine(b, req.user);
     const extra = (fn && await fn(b, req)) || {};
-    await move(b, from, to, extra.setFields || {}, req.user ? req.user.id : null);
+    await move(b, from, to, extra.setFields || {}, req.user ? req.user.id : null, extra.notes || null);
     ok(res, { booking: view(await load(b.id), req.user) });
   }));
 
@@ -1587,6 +1700,10 @@ function createApp(db = openDb()) {
     if (!isProviderApproved(req.user)) bad(403, 'Aapka provider verification abhi pending/inactive hai. Approval ke baad hi jobs accept kar sakte hain.');
     if (!req.user.online) bad(409, 'Pehle online aao');
     if (!getProviderCategories(req.user).includes(b.cat)) bad(403, 'Ye kaam tumhare skill ka nahi hai');
+    if (b.scheduled_date) {
+      const availCheck = await isProviderAvailableForDate(req.user.id, b.scheduled_date);
+      if (!availCheck.available) bad(409, 'Aapne is din ke liye availability OFF rakhi hai');
+    }
     if (b.scheduled_date && b.scheduled_time) {
       const conflict = await db.queryOne(
         `SELECT id FROM bookings
@@ -1596,7 +1713,10 @@ function createApp(db = openDb()) {
       );
       if (conflict) bad(409, `Is time slot (${b.scheduled_time}) mein aapke paas pehle se ek booking hai`);
     }
-    return { setFields: { worker_id: req.user.id } };
+    return {
+      setFields: { worker_id: req.user.id },
+      notes: `Accepted by provider ${req.user.name || ('ID ' + req.user.id)}`
+    };
   });
 
   app.post('/api/bookings/:id/reject-job', auth('worker'), h(async (req, res) => {
@@ -1685,14 +1805,25 @@ function createApp(db = openDb()) {
   // ---------- Live Technician Tracking & Notifications (Phase 7) ----------
   // Permission-based technician location update strictly scoped to active booking
   app.post('/api/bookings/:id/location', auth('worker'), h(async (req, res) => {
+    if (req.user.account_status === 'suspended') {
+      bad(403, 'Aapka account suspended hai');
+    }
     const b = await load(req.params.id);
     mine(b, req.user);
 
     if (req.body && req.body.stop === true) {
       await db.query(
-        'UPDATE bookings SET tracking_active = 0, worker_lat = NULL, worker_lng = NULL, eta_minutes = NULL WHERE id = $1',
+        'UPDATE bookings SET tracking_active = 0, worker_lat = NULL, worker_lng = NULL, eta_minutes = NULL, location_updated_at = NULL WHERE id = $1',
         [b.id]
       );
+      if (b.tracking_active) {
+        try {
+          await db.query(
+            'INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by_user_id, notes) VALUES ($1, $2, $3, $4, $5)',
+            [b.id, b.status, b.status, req.user.id, 'Provider stopped live GPS sharing']
+          );
+        } catch {}
+      }
       return ok(res, {
         tracking_active: false,
         worker_location: null,
@@ -1717,6 +1848,7 @@ function createApp(db = openDb()) {
       calc.eta_minutes = Math.max(1, Math.min(180, Math.round(Number(req.body.eta_minutes))));
     }
 
+    const wasInactive = !b.tracking_active;
     const nowIso = new Date().toISOString();
     await db.query(
       `UPDATE bookings
@@ -1724,6 +1856,14 @@ function createApp(db = openDb()) {
        WHERE id = $5`,
       [lat, lng, calc.eta_minutes, nowIso, b.id]
     );
+    if (wasInactive || req.body?.consent_granted === true) {
+      try {
+        await db.query(
+          'INSERT INTO booking_status_history (booking_id, old_status, new_status, changed_by_user_id, notes) VALUES ($1, $2, $3, $4, $5)',
+          [b.id, b.status, b.status, req.user.id, 'Provider granted consent for live GPS tracking']
+        );
+      } catch {}
+    }
 
     if (calc.eta_minutes != null && calc.eta_minutes <= 5) {
       await notifyUser({
@@ -1738,6 +1878,7 @@ function createApp(db = openDb()) {
 
     ok(res, {
       tracking_active: true,
+      consent_recorded: true,
       worker_location: {
         lat,
         lng,
@@ -1773,12 +1914,16 @@ function createApp(db = openDb()) {
       distInfo = calcDistanceAndEta(Number(b.worker_lat), Number(b.worker_lng), Number(b.customer_lat), Number(b.customer_lng));
     }
 
+    const reqLang = normalizeLang(req.user?.language) || resolveLangFromRequest(req) || 'en';
+    const localizedStatus = (STATUS_LABELS[reqLang] && STATUS_LABELS[reqLang][b.status]) || LABEL[b.status] || b.status;
+
     ok(res, {
       booking_id: b.id,
       status: b.status,
-      status_label: LABEL[b.status] || b.status,
+      status_label: localizedStatus,
       is_active_job: isJobActive,
       tracking_active: hasCoords,
+      consent_granted: hasCoords,
       worker_location: hasCoords ? {
         lat: Number(b.worker_lat),
         lng: Number(b.worker_lng),
@@ -2890,6 +3035,23 @@ function createApp(db = openDb()) {
     if (!worker) bad(404, 'Technician nahi mila');
     if (!isProviderApproved(worker) || worker.account_status === 'suspended') {
       bad(400, 'Sirf approved aur active service provider ko assign kiya ja sakta hai');
+    }
+    if (b.scheduled_date) {
+      const availCheck = await isProviderAvailableForDate(worker.id, b.scheduled_date);
+      if (!availCheck.available) {
+        bad(409, 'Selected provider us din unavailable hai');
+      }
+    }
+    if (b.scheduled_date && b.scheduled_time) {
+      const slotConflict = await db.queryOne(
+        `SELECT id FROM bookings
+         WHERE worker_id = $1 AND id != $2 AND scheduled_date = $3 AND scheduled_time = $4
+           AND status NOT IN ('completed', 'closed', 'cancelled')`,
+        [worker.id, b.id, b.scheduled_date, b.scheduled_time]
+      );
+      if (slotConflict) {
+        bad(409, `Provider is time slot (${b.scheduled_time}) mein pehle se booked hai`);
+      }
     }
 
     const newStatus = b.status === 'requested' ? 'assigned' : b.status;

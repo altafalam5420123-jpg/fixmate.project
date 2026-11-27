@@ -245,6 +245,31 @@ const MESSAGE_MAP = {
     en: 'An internal server error occurred. Please try again.',
     hi: 'सर्वर में तकनीकी समस्या आई है। कृपया कुछ देर बाद प्रयास करें।',
     hinglish: 'Server mein thodi dikkat aayi hai, dobara try karein.'
+  },
+  'Selected provider is date par unavailable hai': {
+    en: 'Selected provider is unavailable on the chosen date.',
+    hi: 'चयनित प्रोवाइडर चुनी गई तिथि पर उपलब्ध नहीं हैं।',
+    hinglish: 'Selected provider is date par unavailable hai.'
+  },
+  'Selected provider us din unavailable hai': {
+    en: 'Selected provider is unavailable on that weekday.',
+    hi: 'चयनित प्रोवाइडर उस दिन उपलब्ध नहीं हैं।',
+    hinglish: 'Selected provider us din unavailable hai.'
+  },
+  'Aapne is din ke liye availability OFF rakhi hai': {
+    en: 'You marked yourself unavailable for this booking date.',
+    hi: 'आपने इस बुकिंग तिथि के लिए उपलब्धता बंद (OFF) रखी है।',
+    hinglish: 'Aapne is date ke liye apni availability OFF rakhi hai.'
+  },
+  'Live location sharing band kar di gayi': {
+    en: 'Live location sharing stopped.',
+    hi: 'लाइव लोकेशन शेयरिंग बंद कर दी गई है।',
+    hinglish: 'Live location sharing band kar di gayi.'
+  },
+  'Live tracking sirf active job ke dauran hi chalu ho sakti hai': {
+    en: 'Live tracking can only be enabled during an active job.',
+    hi: 'लाइव ट्रैकिंग केवल सक्रिय कार्य के दौरान ही चालू की जा सकती है।',
+    hinglish: 'Live tracking sirf active job ke dauran hi ON ho sakti hai.'
   }
 };
 
